@@ -1,7 +1,7 @@
 ﻿/**
  * @file robot.h
  * @brief 机器人交互接口
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -19,6 +19,7 @@
 #include "exception.h"
 #include "motion_control_rt.h"
 #include "planner.h"
+#include "force_control.h"
 
 namespace rokae {
 
@@ -31,9 +32,23 @@ namespace rokae {
   */
  struct Info {
    std::string id;      ///< 机器人uid, 可用于区分连接的机器人
+   std::string mac;     ///< Mac地址
    std::string version; ///< 控制器版本
    std::string type;    ///< 机器人机型名称
    int joint_num;       ///< 轴数
+ };
+
+ /**
+  * @struct StateList
+  * @brief 状态列表
+  */
+ struct StateList {
+   std::vector<double> joint_pos; ///< 轴角，单位弧度
+   CartesianPosition cart_pos {}; ///< 笛卡尔位姿
+   std::vector<std::pair<std::string, bool>> digital_signals; ///< 数字量IO, 信号名称及数值
+   std::vector<std::pair<std::string, double>> analog_signals; ///< 模拟量IO, 信号名称及数值
+   OperateMode operation_mode; ///< 操作模式
+   double speed_override; ///< 速度覆盖比例
  };
 
  /**
@@ -53,6 +68,12 @@ namespace rokae {
     * @param[out] ec 错误码
     */
    void disconnectFromRobot(error_code &ec) noexcept;
+
+   /**
+    * @brief 设置连接断开回调函数
+    * @param[in] handler 回调函数, 参数为bool, true-连接 | false-断开
+    */
+   void setConnectionHandler(const std::function<void(bool)> &handler) noexcept;
 
    // **********************************************************************
    // ***************      Motors power on/off methods      ****************
@@ -91,6 +112,18 @@ namespace rokae {
     */
    void setOperateMode(OperateMode mode, error_code &ec) noexcept;
 
+   /**
+    * @brief 重启工控机 注：在自动模式、下电状态、运动和非空闲状态不允许重启操作
+    * @param[out] ec 错误码
+    */
+   void rebootSystem(error_code& ec) noexcept;
+
+   /**
+    * @brief 关闭工控机。在自动模式、下电状态、运动和非空闲状态不允许重启操作。控制柜断电后重新上电才能重新启动控制器软件。
+    * @param[out] ec 错误码
+    */
+   void shutdownSystem(error_code& ec) noexcept;
+
    // **********************************************************************
    // **************       Get robot information methods      **************
    // **************           查询机器人信息及状态接口           **************
@@ -114,6 +147,22 @@ namespace rokae {
    // ******************           获取机器人位姿接口           ***************
 
    /**
+    * @brief 机器人当前轴角度, 机器人本体+外部轴, 单位: \f$[rad/m]\f$
+    * 外部轴导轨单位\f$[rad/m]\f$
+    * @param[out] ec 错误码
+    * @return 长度: \f$ \mathbb{R}^{DoF+ExJnt \times 1} \f$.
+    */
+   std::vector<double> jointPos(error_code &ec) noexcept;
+
+   /**
+    * @brief 机器人当前关节速度, 机器人本体+外部轴, 单位: \f$[\frac{rad}{s}]\f$
+    * 外部轴导轨，单位\f$[\frac{m}{s}]\f$
+    * @param[out] ec 错误码
+    * @return 长度: \f$ \mathbb{R}^{DoF+ExJnt \times 1} \f$.
+    */
+   std::vector<double> jointVel(error_code &ec) noexcept;
+
+   /**
     * @brief 获取机器人法兰或末端的当前位姿 \f$^{O}T_{F}~[m][rad]\f$.
     * @param[in] ct 坐标系类型
     * 1) flangeInBase: 法兰相对于基坐标系;
@@ -133,15 +182,6 @@ namespace rokae {
     */
    CartesianPosition cartPosture(CoordinateType ct, error_code &ec) noexcept;
 
-   /**
-    * @brief 机器人法兰相对于基坐标系位姿 \f$^{O}T_{F}~[m][rad]\f$.
-    * @param[out] ec 错误码
-    * @return double数组, 长度: \f$ \mathbb{R}^{6 \times 1} \f$ = \f$ \mathbb{R}^{3 \times 1} \f$
-    * transformation and \f$ \mathbb{R}^{3 \times 1} \f$ rotation \f$ [x, y, z, a, b, c]^T \f$.
-    */
-   [[deprecated("Using posture(CoordinateType::flangeInBase) instead")]]
-   std::array<double, 6> flangePos(error_code &ec) noexcept;
-
    // **********************************************************************
    // ***************      Get and set coordinate methods      *************
    // *****************           获取与设置坐标系接口           ***************
@@ -155,6 +195,13 @@ namespace rokae {
    std::array<double, 6> baseFrame(error_code &ec) const noexcept;
 
    /**
+    * @brief 设置基坐标系, 设置后仅保存数值，重启控制器后生效
+    * @param[in] frame 坐标系，默认使用自定义安装方式
+    * @param[out] ec 错误码
+    */
+   void setBaseFrame(const Frame &frame, error_code &ec) noexcept;
+
+   /**
     * @brief 查询当前工具工件组信息
     * @note 此工具工件组仅为SDK运动控制使用, 不与RL工程相关.
     * @param[out] ec 错误码
@@ -163,8 +210,9 @@ namespace rokae {
 
    /**
     * @brief 设置工具工件组信息
-    * @note 此工具工件组仅为SDK运动控制使用, 不与RL工程相关.
-    *       除此接口外, 如果通过RobotAssist更改默认工具工件(右上角的选项), 该工具工件组也会相应更改.
+    * @note 此工具工件组仅为SDK使用, 不与RL工程相关。
+    * 设置后RobotAssist右上角会显示“toolx", "wobjx", 状态监控显示的末端坐标也会变化。
+    * 除此接口外, 如果通过RobotAssist更改默认工具工件(右上角的选项), 该工具工件组也会相应更改。
     * @param[in] toolset 工具工件组信息
     * @param[out] ec 错误码
     */
@@ -172,7 +220,9 @@ namespace rokae {
 
    /**
     * @brief 使用已创建的工具和工件，设置工具工件组信息
-    * @note 设置前提: 已加载一个RL工程，且创建了工具和工件。否则，只能设置为默认的工具工件，即"tool0"和"wobj0"。
+    * @note 设置前提:
+    *   1) 使用RL工程中创建的工具工件: 需要先加载对应RL工程;
+    *   2) 全局工具工件: 无需加载工程，直接调用即可。e.g. setToolset("g_tool_0", "g_wobj_0")
     * 一组工具工件无法同时为手持或外部；如果有冲突，以工具的位置为准，例如工具工件同时为手持，不会返回错误，但是工件的坐标系变成了外部
     * @param[in] toolName 工具名称
     * @param[in] wobjName 工件名称
@@ -259,7 +309,8 @@ namespace rokae {
    void readRegister(const std::string &name, unsigned index, T &value, error_code &ec) noexcept;
 
    /**
-    * @brief 写寄存器值。可写入单个寄存器，或按索引写入寄存器数组中某一元素。
+    * @brief 写寄存器值。可写入单个寄存器，寄存器数组，或按索引写入寄存器数组中某一元素。
+    * 如果要写整个寄存器数组，value传入对应类型的vector，index值被忽略。
     * @tparam T 写入数值类型
     * @param[in] name 寄存器名称
     * @param[in] index 数组索引，从0开始。
@@ -280,6 +331,17 @@ namespace rokae {
     */
    void clearServoAlarm(error_code &ec) noexcept;
 
+   // **********************************************************************
+   // ***************        Recover state methods         *****************
+   // ***************              恢复状态接口             *****************
+
+   /**
+    * @brief 根据选项恢复机器人状态
+    * @param[in] item 恢复选项，1：急停恢复
+    * @param[out] ec 错误码
+    */
+   void recoverState(int item, error_code &ec) noexcept;
+
    /**
     * @brief 查询xCore-SDK版本
     * @return 版本号
@@ -291,9 +353,10 @@ namespace rokae {
     * @param[in] count 查询个数，上限是10条
     * @param[in] level 指定日志等级，空集合代表不指定
     * @param[out] ec 错误码
+    * @param[in] offset 偏移数, 比如0代表从最新的日志开始查询, 10代表从第11条开始查询
     * @return 日志信息
     */
-   std::vector<LogInfo> queryControllerLog(unsigned count, const std::set<LogInfo::Level>& level, error_code &ec) noexcept;
+   std::vector<LogInfo> queryControllerLog(unsigned count, const std::set<LogInfo::Level>& level, error_code &ec, unsigned offset = 0) noexcept;
 
    // **********************************************************************
    // ******************      Motion Controller        *********************
@@ -310,8 +373,8 @@ namespace rokae {
    //  --------------    MotionControlMode::NrtCommand   ------------------
    //  ----------------         非实时运动指令              ------------------
    /**
-    * @brief 重置运动缓存, 清空已发送的运动指令, 清除执行信息
-    * @note 每次程序开始运行并第一次执行运动指令之前, 调用该函数来重置运动缓存
+    * @brief 运动重置, 清空已发送的运动指令, 清除执行信息
+    * @note Robot类在初始化时会调用一次运动重置。RL程序和SDK运动指令切换控制，需要先运动重置。
     * @param[out] ec 错误码
     */
    void moveReset(error_code &ec) noexcept;
@@ -331,7 +394,8 @@ namespace rokae {
 
    /**
     * @brief 添加单条或多条运动指令, 添加后调用moveStart()开始运动
-    * @tparam Command 运动指令类: MoveJCommand | MoveAbsJCommand | MoveLCommand | MoveCCommand | MoveCFCommand;
+    * @tparam Command 运动指令类: MoveJCommand | MoveAbsJCommand | MoveLCommand | MoveCCommand | MoveCFCommand |
+    * MoveSPCommand;
     * 笛卡尔空间运动使用欧拉角XYZ表示旋转量，即使用trans&rpy的值
     * @param[in] cmds 指令列表, 允许的个数为1-100, 须为同类型的指令
     * @param[out] cmdID 本条指令的ID, 可用于查询指令执行信息
@@ -343,7 +407,8 @@ namespace rokae {
 
    /**
    * @brief 添加单条或多条运动指令, 添加后调用moveStart()开始运动
-   * @tparam Command 运动指令类: MoveJCommand | MoveAbsJCommand | MoveLCommand | MoveCCommand | MoveCFCommand
+   * @tparam Command 运动指令类: MoveJCommand | MoveAbsJCommand | MoveLCommand | MoveCCommand | MoveCFCommand |
+   * MoveSPCommand
    * @param[in] cmds 指令列表, 允许的个数为1-100, 须为同类型的指令
    * @param[out] cmdID 本条指令的ID, 可用于查询指令执行信息
    * @param[out] ec 错误码, 仅反馈指令发送前的错误, 包括:
@@ -353,44 +418,62 @@ namespace rokae {
    void moveAppend(std::initializer_list<Command> cmds, std::string &cmdID, error_code &ec) noexcept;
 
    /**
-    * @brief 设定默认运动速度，初始值为100
-    * @note 该数值表示末端最大线速度(单位mm/s), 自动计算对应末端旋转速度及轴速度
-    * @param[in] speed 该接口不对参数进行范围限制。末端线速度的实际有效范围分别是5-4000(协作), 5-7000(工业)。
-    *              关节速度百分比划分为5个的范围:
-    *                < 100 : 10%
-    *            100 ~ 200 : 30%
-    *            200 ~ 500 : 50%
-    *            500 ~ 800 : 80%
-    *                > 800 : 100%
+    * @brief 添加单条运动指令, 添加后调用moveStart()开始运动
+    * @tparam Command 运动指令类: MoveJCommand | MoveAbsJCommand | MoveLCommand | MoveCCommand |
+    * MoveCFCommand | MoveSPCommand | MoveWaitCommand
+    * @param[in] cmd 指令
+    * @param[out] cmdID 本条指令的ID, 可用于查询指令执行信息
     * @param[out] ec 错误码
     */
-   void setDefaultSpeed(int speed, error_code &ec) noexcept;
+   template<class Command>
+   void moveAppend(const Command &cmd, std::string &cmdID, error_code &ec) noexcept;
 
    /**
-    * @brief 设定默认转弯区。初始值为为0 (fine, 无转弯区)
-    * @note 该数值表示运动最大转弯区半径(单位:mm), 自动计算转弯百分比
-    * @param[in] zone 该接口不对参数进行范围限制。转弯区半径大小实际有效范围是0-200。
-    *             转弯百分比划分4个范围:
-    *               < 1 : 0 (fine)
-    *            1 ~ 20 : 10%
-    *           20 ~ 60 : 30%
-    *              > 60 : 100%
+    * @brief 设定默认运动速度，单位mm/s, 初始值为100
+    * @note 该数值表示末端最大线速度, 自动计算对应关节速度。
+    *   关节速度百分比根据speed划分为5个的范围:
+    *         < 100 : 10%
+    *     100 ~ 200 : 30%
+    *     200 ~ 500 : 50%
+    *     500 ~ 800 : 80%
+    *         > 800 : 100%
+    *   空间旋转速度为200°/s
+    * @param[in] speed 该接口不对参数进行范围限制。末端线速度的实际有效范围分别是(0, 4000](协作), (0, 7000](工业)。
     * @param[out] ec 错误码
     */
-   void setDefaultZone(int zone, error_code &ec) noexcept;
+   void setDefaultSpeed(double speed, error_code &ec) noexcept;
 
    /**
-    * @brief 设置是否严格遵循笛卡尔点位Conf检查。初始值为false (不严格遵循)
-    * 注：对于xMateCR和xMateSR系列机型，由于构型特殊，当运动指令设置了confData时，默认使用confData进行逆解计算。
-    * @param[in] forced true - 严格遵循，此时会用运动指令的confData计算笛卡尔点位逆解, 如计算失败则返回错误;
-    * false - 不严格遵循，逆解时会选取机械臂当前轴角度的最近解
+    * @brief 设定默认转弯区, 单位:mm。初始值为为0 (fine, 无转弯区)
+    * @note 该数值表示运动最大转弯区半径, 自动计算转弯百分比
+    *   转弯百分比划分4个范围:
+    *         < 1 : 0 (fine)
+    *      1 ~ 20 : 10%
+    *     20 ~ 60 : 30%
+    *        > 60 : 100%
+    * @param[in] zone 该接口不对参数进行范围限制。转弯区半径大小实际有效范围是[0, 200]。
+    * @param[out] ec 错误码
+    */
+   void setDefaultZone(double zone, error_code &ec) noexcept;
+
+   /**
+    * @brief 设置是否使用轴配置数据(confData)计算逆解。初始值为false
+    * @param[in] forced true - 使用运动指令的confData计算笛卡尔点位逆解, 如计算失败则返回错误;
+    * false - 不使用，逆解时会选取机械臂当前轴角度的最近解
     * @param[out] ec 错误码
     */
    void setDefaultConfOpt(bool forced, error_code &ec) noexcept;
 
    /**
-    * @brief 设置最大缓存指令个数，指发送到控制器待规划的路径点个数，允许的范围[1,20]，初始值为10。
-    * @note 如果轨迹多为短轨迹，可以调大这个数值，避免因指令发送不及时导致机器人停止运动(停止后如果有未执行的指令，可moveStart()继续);
+    * @brief 设置运动指令是否使自动取消转弯区。初始值为true
+    * @param[in] enable true - 自动取消转弯区 | false - 不会自动取消转弯区
+    * @param[out] ec 错误码
+    */
+   void setAutoIgnoreZone(bool enable, error_code& ec) noexcept;
+
+   /**
+    * @brief 设置最大缓存指令个数，指发送到控制器待规划的路径点个数，允许的范围[1,1000]，初始值为300。
+    * @note 如果轨迹多为短轨迹，可以调大这个数值，避免因指令发送不及时导致机器人停止运动(停止后如果有未执行的指令，可moveStart()继续;
     * @param[in] number 个数
     * @param[out] ec 错误码
     */
@@ -404,21 +487,61 @@ namespace rokae {
    void adjustSpeedOnline(double scale, error_code &ec) noexcept;
 
    /**
+    * @brief 读取当前加/减速度和加加速度
+    * @param[out] acc 系统预设加速度的百分比
+    * @param[out] jerk 系统预设的加加速度的百分比
+    * @param[out] ec 错误码
+    */
+   void getAcceleration(double &acc, double &jerk, error_code &ec) noexcept;
+
+   /**
+    * @brief 调节运动加/减速度和加加速度。如果在机器人运动中调用，当前正在执行的指令不生效，下一条指令生效
+    * @param[in] acc 系统预设加速度的百分比，范围[0.2, 1.5], 超出范围不会报错，自动改为上限或下限值
+    * @param[in] jerk 系统预设的加加速度的百分比，范围[0.1, 2], 超出范围不会报错，自动改为上限或下限值
+    * @param[out] ec 错误码
+    */
+   void adjustAcceleration(double acc, double jerk, error_code &ec) noexcept;
+
+   /**
     * @brief 开始jog机器人，需要切换到手动操作模式。
     * @note 调用此接口并且机器人开始运动后，无论机器人是否已经自行停止，都必须调用stop()来结束jog操作，否则机器人会一直处于jog的运行状态。
-    * @param[in] space jog参考坐标系。工具/工件坐标系使用原则同setToolset()
+    * @param[in] space jog参考坐标系。
+    *     1) 工具/工件坐标系使用原则同setToolset();
+    *     2) 工业六轴机型和xMateCR/SR六轴机型支持两种奇异规避方式: JogOpt::singularityAvoidMode JogOpt::baseParallelMode
+    *     3) CR5轴机型支持平行基座模式Jog: JogOpt::baseParallelMode
     * @param[in] rate 速率, 范围 0.01 - 1
     * @param[in] step 步长。单位: 笛卡尔空间-毫米 | 轴空间-度。步长大于0即可，不设置上限，
     *             如果机器人无法继续jog会自行停止运动。
-    * @param[in] index 笛卡尔空间 - 0~5分别对应XYZABC | 轴空间 - 关节序号，从0开始计数
-    * @param[in] direction 方向，true - 正向 | false - 负向
+    * @param[in] index 根据不同的space，该参数含义如下：
+    *     1) 世界坐标系,基坐标系,法兰坐标系,工具工件坐标系:
+    *       a) 6轴机型: 0~5分别对应X, Y, Z, Rx, Ry, Rz。>5代表外部轴(若有)
+    *       b) 7轴机型6代表肘关节, >6代表外部轴(若有)
+    *     2) 轴空间: 关节序号，从0开始计数
+    *     3) 奇异规避模式,平行基座模式:
+    *       a) 6轴机型：0~5分别对应X, Y, Z, J4(4轴), Ry, J6(6轴);
+    *       b) 5轴机型：0~4分别对应X, Y, Z, Ry, J5(5轴)
+    * @param[in] direction 根据不同的space和index，该参数含义如下：
+    *     1) 奇异规避模式 J4: true - ±180° | false - 0°;
+    *     2) 平行基座模式 J4 & Ry: true - ±180° | false - 0°
+    *     3) 其它，true - 正向 | false - 负向
     * @param[out] ec 错误码
     */
-   virtual void startJog(JogOpt::Space space, double rate, double step, unsigned index, bool direction, error_code &ec) noexcept;
+   void startJog(JogOpt::Space space, double rate, double step, unsigned index, bool direction, error_code &ec) noexcept;
+
+   /**
+    * @param[in] index
+    * @param[in] fixed_name
+    *            fixed_name与index配合使用，fixed_name传入任意字符，is_ext为false，index为0，则jog机器人第一个轴
+    *            fixed_name传入u1，index为0，则jog机械单元u1的第一个轴
+    * @param[in] is_ext:是否为移动外部轴
+    * 其余参数同startJog
+    */
+   void startJogWithExt(JogOpt::Space space, double rate,double step, unsigned int index, bool direction, std::string fixed_name, error_code& ec, bool is_ext = true) noexcept;
 
    /**
     * @brief 执行单条或多条运动指令，调用后机器人立刻开始运动
-    * @tparam Command 运动指令类: MoveJCommand | MoveAbsJCommand | MoveLCommand | MoveCCommand;
+    * @tparam Command 运动指令类: MoveJCommand | MoveAbsJCommand | MoveLCommand | MoveCCommand | MoveCFCommand |
+    * MoveSPCommand;
     * 笛卡尔空间运动使用欧拉角XYZ表示旋转量，即使用trans&rpy的值
     * @param[in] cmds 指令列表, 允许的个数为1-100,须为同类型的指令
     * @param[out] ec 错误码, 仅反馈执行前的错误, 包括:
@@ -437,13 +560,6 @@ namespace rokae {
     */
    template<class Command>
    void executeCommand(std::initializer_list<Command> cmds, error_code &ec) noexcept;
-
-   /**
-   * @brief 获取最新的错误码, 目前为运动指令的执行结果
-   * @return 错误码,可调用message()获取详细信息
-   */
-   [[deprecated("The return might be inaccurate, use queryMoveExecutionInfo() instead.")]]
-   std::error_code lastErrorCode() noexcept;
 
    // *********************************************************************
    // *****************         事件/状态监听              ******************
@@ -479,6 +595,7 @@ namespace rokae {
     * @param[in] timeout 超时时间
     * @return 接收到的数据长度。如果超时前没有收到数据，那么返回0。
     * @throw RealtimeControlException 无法收到数据；或收到的数据有错误导致无法解析
+    * @throw RealtimeMotionException 实时模式运动报错
     */
    unsigned updateRobotState(std::chrono::steady_clock::duration timeout);
 
@@ -494,6 +611,17 @@ namespace rokae {
     */
    template<typename R>
    int getStateData(const std::string &fieldName, R &data);
+
+   // --------------------------------------------------------------------
+   // --------------------        机器人配置            --------------------
+
+   /**
+    * @brief 读取DH参数
+    * @param[in] get_nominal false - 优化后或设置后的参数 | true - 读取标称参数。一般建议使用false
+    * @param[out] ec 错误码
+    * @return DH参数, 错误码为0时有效。依次为各轴的Alpha[°], A[mm], D[mm], Theta[°]
+    */
+   std::vector<double> getRobotCfg_DHparam(bool get_nominal, error_code &ec) noexcept;
 
    //  --------------    MotionControlMode::NrtRLTask   ------------------
    //  ----------------         RL工程相关指令            -------------------
@@ -554,6 +682,226 @@ namespace rokae {
    std::vector<WorkToolInfo> wobjsInfo(std::error_code &ec) noexcept;
 
    /**
+    * @brief 将本地的RL工程压缩包导入控制器。阻塞等到导入完成或失败
+    * @param[in] file_path 本地 .zip压缩包路径, 文件大小在10M以内
+    * @param[in] overwrite 是否覆盖同名文件，是：覆盖；否：自动重命名
+    * @param[out] ec 错误码
+    * @return 工程名（比如自动重命名，返回重命名之后的）
+    */
+   std::string importProject(const std::string &file_path, bool overwrite, error_code &ec) noexcept;
+
+   /**
+    * @brief 删除控制器里的RL工程
+    * @param[in] project_name 工程名
+    * @param[in] remove_all 是否删除所有工程，缺省值是false
+    * @param[out] ec 错误码
+    */
+   void removeProject(const std::string &project_name, error_code &ec, bool remove_all = false) noexcept;
+
+   /**
+    * @brief 导入本地文件到控制器。阻塞等到导入完成或失败
+    * @param[in] src_file_path 本地文件路径。文件大小在10M以内
+    * @param[in] dest 目标路径
+    *   1) 传输单个RL工程 .mod文件: project/[工程名]/[任务名]</[mod文件名]>
+    *   2) 传输RL工程.json/.xml/.sys格式的配置文件: project/[工程名]</[文件名]>。
+    *      注意: 配置文件名称不可更改，比如任务文件名必须是"task.xml"
+    * @param[in] overwrite 覆盖同名文件: true - 覆盖 | false - 自动重命名。仅.mod文件支持自动重命名
+    * @param[out] ec 本地文件不存在; 文件格式错误; 传输失败; 目标路径不符合要求等
+    * @return 导入成功后文件名
+    */
+   std::string importFile(std::string src_file_path, std::string dest, bool overwrite, error_code &ec) noexcept;
+
+   /**
+    * @brief 删除控制器中文件。注: 工程.xml, .json等配置文件不能删除，只能替换
+    * @param[in] file_path_list 文件路径的列表, 单个文件路径如下:
+    *   1) 删除某工程某任务下的 .mod文件: project/[工程名]/[任务名]/[mod文件名]
+    *   2) 删除某工程某任务: project/[工程名]/[任务名]
+    * @param[out] ec 参数格式错误或网络错误。工程或任务或文件不存在不返回错误码
+    */
+   void removeFiles(std::vector<std::string> file_path_list, error_code &ec) noexcept;
+
+   /**
+    * @brief 设置全局工具信息，或新建/设置RL工程中工具的位姿信息和负载信息
+    * @note 说明:
+    *   1) 全局工具: 控制器支持16个全局工具，名称固定为 "g_tool_0" ~ "g_tool_15"
+    *   2) RL工程工具: 使用起来限制条件较多，不建议通过该接口设置工程工具，建议用全局工具。限制条件有:
+    *       a) 需要先加载好一个工程，再设置。只要名称不是全局工具的，都视为工程工具。
+    *       b) 若工具不存在则新建，存在则修改。
+    *       c) 需要配合修改工程的工具配置文件，否则RL指令可能无法正常解析工具信息。并且如果不改配置文件，设置后的数据也不会保存。
+    *   3) 暂不支持设置工具包络信息
+    * @param[in] tool_info 工具信息。
+    * @param[out] ec 全局工具一般不会设置失败。工程中工具可能会设置失败，比如给控制器推送了工程的工具配置文件但是没有重新加载工程，工具配置不一致的情况下会返回错误码
+    */
+   void setToolInfo(const WorkToolInfo &tool_info, error_code &ec) noexcept;
+
+   /**
+    * @brief 设置全局工件信息，或新建/设置RL工程中工件的位姿信息和负载信息
+    * @note 说明:
+    *   1) 全局工件: 控制器支持16个全局工件，名称固定为 "g_wobj_0" ~ "g_wobj_15"
+    *   2) RL工程工件: 使用起来限制条件较多，不建议通过该接口设置工程工件，建议用全局工件。限制条件有:
+    *       a) 需要先加载好一个工程，再设置。只要名称不是全局工件的，都视为工程工件。
+    *       b) 若工件不存在则新建，存在则修改。
+    *       c) 需要配合修改工程的工件配置文件，否则RL指令可能无法正常解析工具信息。并且如果不改配置文件，设置后的数据也不会保存。
+    *   3) 暂不支持设置相关用户坐标系，全局工件默认为"g_user_0", 工程工件默认为 "userframe0"
+    * @param[in] wobj_info 工件信息
+    * @param[out] ec 同理设置工具接口，全局工件一般不会设置失败。工程中工件可能会设置失败
+    */
+   void setWobjInfo(const WorkToolInfo &wobj_info, error_code &ec) noexcept;
+
+   // ---------------------------------------------------------------------
+   // ---------------------           外部轴          ----------------------
+
+   /**
+    * @brief 设置导轨参数
+    * @tparam R 参数类型
+    * @param[in] name 参数名，见value说明
+    * @param[in] value
+    *   参数             |    参数名         |   数据类型
+    *   开关             | enable           | bool
+    *   基坐标系         | baseFrame         | Frame
+    *   导轨名称         | name              | std::string
+    *   编码器分辨率      | encoderResolution | int
+    *   减速比           | reductionRatio    | double
+    *   电机最大转速(rpm) | motorSpeed       | int
+    *   软限位(m), [下限,上限]   | softLimit  | std::vector<double>
+    *   运动范围(m), [下限,上限] | range      | std::vector<double>
+    *   最大速度(m/s)      | maxSpeed | double
+    *   最大加速度（m/s^2)  | maxAcc  | double
+    *   最大加加速度(m/s^3) | maxJerk | double
+    * @param[out] ec 错误码。参数名不存在或数据类型不匹配返回错误码
+    */
+   template<typename R>
+   void setRailParameter(const std::string &name, R value, error_code &ec) noexcept;
+
+   /**
+    * @brief 读取导轨参数
+    * @tparam R 参数类型
+    * @param[in] name 参数名，见setRailParameter()
+    * @param[out] value 参数数值，见setRailParameter()
+    * @param[out] ec 错误码 参数名不存在或数据类型不匹配返回错误码
+    */
+   template<typename R>
+   void getRailParameter(const std::string &name, R &value, error_code &ec) noexcept;
+
+    /**
+    * @brief 读取机械单元参数
+    * @tparam R 参数类型
+    * @param[in] name 参数名，u1~u6
+    * @param[in] info 参数名，见value说明
+    * @param[in] value
+    *   参数                         |    参数名             |   数据类型
+    *   机械单元是否激活             | activation            | bool
+    *   轴名称，顺序与设置顺序相同   | axes_info             | std::vector<std::string>
+    *   机械单元是否启用             | enable                | bool
+    *   机械单元固定名称             | fixed_name            | std::string
+    *   机械单元类型                 | mech_link_type        | int
+    *   自定义的机械单元名           | unit_name             | std::string
+    * 0：基座轴   1：变位机  2：伺服焊枪  3：法兰附加轴
+    * @param[out] ec 错误码 参数名不存在或数据类型不匹配返回错误码
+   */
+   template<typename R>
+   void getMechUnit(const std::string &name, const std::string& info, R &value, error_code &ec) noexcept;
+
+   /**
+   * @brief 读取机械单元参数
+   * @tparam R 参数类型
+   * @param[in] name 参数名，axis1~axis6
+   * @param[out] info 参数名，见value说明
+    * @param[in] value
+    *   参数                         |    参数名             |   数据类型
+    *   点位中第几个数据映射         | ext_data_number            | int
+    *   连接的第几个驱动器           | ext_axis_number             | int
+    *   是否是伺服焊枪               | is_servo_gun                | bool
+    *   最大加速度                   | max_acc            | double
+    *   最大加加速度                  | max_jerk        | double
+    *   最大速度                     | max_speed            | double
+    *   软限位下限                   | soft_limit_lower             | double
+    *   软限位上限                   | soft_limit_upper             | double
+    *   零点值                       | zero_value                | int
+    *   电机过载系数                 | motor_overload_coefficient            | int
+    *   电机转矩限幅                 | motor_torque_limiting        | double
+    *   减速比                       | reduction_ratio             | double
+    *   电机额定转矩                 | rated_torque_of_motor            | double
+    *   分辨率                       | resolution_ratio             | int
+    *   关节方向                     | joint_orient                | bool（true为正）
+    *   是否坐标系标定               | coordinate_calibrated            |bool
+    *   驱动器别名/固定名            | driver_name        | std::string
+    * 0：基座轴   1：变位机  2：伺服焊枪  3：法兰附加轴
+    * @param[out] ec 错误码 参数名不存在或数据类型不匹配返回错误码
+   */
+   template<typename R>
+   void getExtAxisInfo(const std::string& name, const std::string& info, R& value, error_code& ec) noexcept;
+
+   // *********************************************************************
+   // ***********           NTP相关 (非标配功能，需要额外安装)         **********
+
+   /**
+    * @brief 配置NTP。非标配功能，需要额外安装。
+    * @param[in] server_ip NTP服务端IP
+    * @param[out] ec 错误码，NTP服务未正确安装，或地址非法
+    */
+   void configNtp(const std::string &server_ip, error_code &ec) noexcept;
+
+   /**
+    * @brief 手动同步一次时间，远端IP是通过configNtp配置的。耗时几秒钟，阻塞等待同步完成，接口预设的超时时间是12秒
+    * @param[out] ec 错误码，NTP服务未正确安装，或无法和服务端同步
+    */
+   void syncTimeWithServer(error_code &ec) noexcept;
+
+   /**
+    * @brief 检验笛卡尔轨迹是否可达，直线轨迹
+    * @param[in] start 起始点
+    * @param[in] start_joint 起始轴角 [弧度]
+    * @param[in] target 目标点
+    * @param[out] ec 含不可达的错误原因
+    * @return 计算出的目标轴角，仅当无错误码时有效
+    * @note 支持导轨，返回的目标轴角为轴数+外部轴数
+    */
+   std::vector<double> checkPath(const CartesianPosition &start,
+                                const std::vector<double> &start_joint,
+                                const CartesianPosition &target,
+                                error_code &ec) noexcept;
+
+   /**
+    * @brief 校验多个直线轨迹
+    * @param[in] start_joint 起始轴角，单位[弧度]
+    * @param[in] points 笛卡尔点位，至少需要2个点，第一个点是起始点
+    * @param[out] target_joint_calculated 若校验通过。返回计算出的目标轴角
+    * @param[out] ec 校验失败的原因
+    * @return 若校验失败，返回points中出错目标点的下标。其它情况返回0
+    */
+   int checkPath(const std::vector<double> &start_joint,
+                 const std::vector<CartesianPosition> &points,
+                 std::vector<double> &target_joint_calculated,
+                 error_code &ec) noexcept;
+
+   /**
+    * @brief 检验笛卡尔轨迹是否可达，包括圆弧，全圆
+    * @param[in] start 起始点
+    * @param[in] start_joint 起始轴角 [弧度]
+    * @param[in] aux 辅助点
+    * @param[in] target 目标点
+    * @param[out] ec 含不可达的错误原因
+    * @param[in] angle 全圆执行角度，不等于零时代表校验全圆轨迹
+    * @param[in] rot_type 全圆旋转类型
+    * @return 计算出的目标轴角，仅当无错误码时有效
+    * @note 支持导轨，返回的目标轴角为轴数+外部轴数
+    */
+   std::vector<double> checkPath(const CartesianPosition &start,
+                                 const std::vector<double> &start_joint,
+                                 const CartesianPosition &aux,
+                                 const CartesianPosition &target,
+                                 error_code &ec, double angle =0.0,
+                                 MoveCFCommand::RotType rot_type = MoveCFCommand::constPose) noexcept;
+
+  /**
+   * @brief 示教器热插拔。注：仅部分机型支持示教器热插拔，不支持的机型会返回错误码。不使用示教器后，使能按键和急停按键将失效。
+   * @param[in] enable true - 使用示教器 | false - 不使用示教器
+   * @param[out] ec 当前机器人状态不能切换(运动中/手动模式上电); 机型等原因切换失败
+   */
+   void setTeachPendantMode(bool enable, error_code& ec) noexcept;
+
+   /**
     * @brief 析构Robot对象时会让机器人停止运动
     */
    virtual ~BaseRobot() noexcept;
@@ -586,15 +934,16 @@ namespace rokae {
    /**
     * @brief Default constructor, call connectToRobot(remoteIp) afterwards
     */
-   Robot_T() = default;
+   Robot_T();
 
    /**
     * @brief 创建机器人实例, 并连接机器人
     * @param[in] remoteIP 机器人IP地址
+    * @param[in] localIP 本机地址。实时模式下收发交互数据用，可不设置；PCB3/4轴机型不支持
     * @throw NetworkException 网络连接错误
     * @throw ExecutionException 机器人实例与连接机型不符，或未授权SDK
     */
-   explicit Robot_T(const std::string &remoteIP);
+   explicit Robot_T(const std::string &remoteIP, const std::string &localIP = "");
 
    /**
     * @brief 连接到机器人。机器人地址为创建robot实例时传入的
@@ -610,6 +959,16 @@ namespace rokae {
     * @throw ExecutionException 机器人实例与连接机型不符，或未授权SDK
     */
    void connectToRobot(const std::string &remoteIP, const std::string &localIP = "");
+
+   // **********************************************************************
+   // ******************             状态查询              ******************
+
+   /**
+    * @brief 查询当前位置, IO信号, 操作模式, 速度覆盖值
+    * @param ec 错误码
+    * @return 查询结果
+    */
+   StateList getStateList(error_code &ec) noexcept;
 
    // **********************************************************************
    // ******************    Get robot joint state       ********************
@@ -637,7 +996,7 @@ namespace rokae {
    std::array<double, DoF> jointTorque(error_code &ec) noexcept;
 
    // **********************************************************************
-   // *******************            坐标系标定           ********************
+   // *********************             标定           **********************
 
    /**
     * @brief 坐标系标定 (N点标定)
@@ -647,6 +1006,7 @@ namespace rokae {
     *   2) 工件坐标系: 三点标定。标定结果不会相对用户坐标系做变换，即，若为外部工件，返回的结果是相对于基坐标系的。
     *   3) 基坐标系: 六点标定。标定前请确保动力学约束和前馈已关闭。
     *              若标定成功(无错误码)，控制器会自动保存标定结果，重启控制器后生效。
+    *   4) 导轨基坐标系: 三点标定。若标定成功(无错误码)，控制器会自动保存标定结果，重启控制器后生效。
     * @param[in] points 轴角度列表，列表长度为N。例如，使用三点法标定工具坐标系，应传入3组轴角度。轴角度的单位是弧度。
     * @param[in] is_held true - 机器人手持 | false - 外部。仅影响工具/工件的标定
     * @param[out] ec 错误码
@@ -705,16 +1065,17 @@ namespace rokae {
   * @brief 协作机器人通用类
   */
  class XCORE_API BaseCobot: virtual public BaseRobot {
+
   public:
-   using BaseRobot::BaseRobot;
 
    /**
     * @brief 打开拖动
     * @param[in] space 拖动空间. 轴空间拖动仅支持自由拖拽类型
     * @param[in] type 拖动类型
     * @param[out] ec 错误码
+    * @param[in] enable_drag_button true - 打开拖动功能之后可以直接拖动机器人，不需要按住末端按键
     */
-   void enableDrag(DragParameter::Space space, DragParameter::Type type, error_code& ec) noexcept;
+   void enableDrag(DragParameter::Space space, DragParameter::Type type, error_code& ec, bool enable_drag_button = false) noexcept;
 
    /**
     * @brief 关闭拖动
@@ -752,6 +1113,7 @@ namespace rokae {
 
    /**
     * @brief 运动指令-路径回放。
+    * 和其它运动指令类似，调用replayPath之后，需调用moveStart才会开始运动。
     * @param[in] name 要回放的路径名称
     * @param[in] rate 回放速率, 应小于3.0, 1为路径原始速率。注意当速率大于1时，可能产生驱动器无法跟随错误
     * @param[out] ec 错误码
@@ -780,13 +1142,63 @@ namespace rokae {
     */
    void setxPanelVout(xPanelOpt::Vout opt, error_code& ec) noexcept;
 
+   /**
+    * @brief 使用CR和SR末端的485通信功能，需要修改末端的参数配置，可通过此接口进行参数配置
+    * @param[in] opt 对外供电模式，0：不输出，1：保留，2：12v，3：24v
+    * @param[in] if_rs485 接口工作模式，是否打开末端485通信
+    * @param[out] ec 错误码
+    */
+   void setxPanelRS485(xPanelOpt::Vout opt, bool if_rs485, error_code& ec) noexcept;
+
+   /**
+    * @brief 通过xPanel末端读写modbus寄存器
+    * @param[in] slave_addr 设备地址 0-65535
+    * @param[in] fun_cmd 功能码 0x03 0x04 0x06 0x10
+    * @param[in] reg_addr 寄存器地址 0-65535
+    * @param[in] data_type 支持的数据类型  int32、int16、uint32、uint16
+    * @param[in] num 一次连续操作寄存器的个数 0-3，类型为int16/uint16时，最大为3；类型为int32/uint32、float时，最大为1，功能码为0x06时，此参数无效
+    * @param[in/out] data_array 发送或接收数据的数组，非const，功能码为0x06时，只使用此数组的数据[0],此时num的值无效，除了0x06功能码，大小需要与num匹配
+    * @param[in] if_crc_reverse 是否改变CRC校验高低位，默认false，少数厂家末端工具需要反转
+    * @param[out] ec 错误码
+    */
+   void XPRWModbusRTUReg(int slave_addr, int fun_cmd, int reg_addr, std::string data_type, int num, std::vector<int>& data_array, bool if_crc_reverse, error_code& ec) noexcept;
+
+   /**
+    * @brief 通过xPanel末端读写modbus线圈或离散输入
+    * @param[in] slave_addr 设备地址 0-65535
+    * @param[in] fun_cmd 功能码 0x01 0x02 0x05 0x0F
+    * @param[in] coil_addr 线圈或离散输入寄存器地址 0-65535
+    * @param[in] num 一次连续读写线圈离散输入的个数（0-48），功能码0x05时，此值无效
+    * @param[in/out] data_array 发送或接收数据的数组，非const，功能码为0x05时，只使用此数组的数据[0],此时num的值无效，除了0x05功能码，大小需要与num匹配
+    * @param[in] if_crc_reverse 是否改变CRC校验高低位，默认false，少数厂家末端工具需要反转
+    * @param[out] ec 错误码
+    */
+   void XPRWModbusRTUCoil(int slave_addr, int fun_cmd, int coil_addr, int num, std::vector<bool>& data_array, bool if_crc_reverse, error_code& ec) noexcept;
+
+   /**
+    * @brief 通过xPanel末端直接传输RTU协议裸数据
+    * @param[in] send_byte 发送字节长度  0-16
+    * @param[in] rev_byte 接收字节长度 0-16
+    * @param[in] send_data 发送字节数据 数组长度需要和send_byte 参数一致
+    * @param[out] rev_data 接收字节数据 数组长度需要和rev_byte 参数一致
+    * @param[out] ec 错误码
+    */
+   void XPRS485SendData(int send_byte, int rev_byte, const std::vector<uint8_t>& send_data, std::vector<uint8_t>& rev_data, error_code& ec) noexcept;
+
+   /**
+    * @brief 获取末端按键状态，不支持的机型会返回错误码
+    * @param[out] ec 错误码
+    * @return 末端按键的状态。末端按键编号见《xCore机器人控制系统使用手册》末端把手的图示。
+    */
+   KeyPadState getKeypadState(error_code& ec) noexcept;
+
    // **********************************************************
    // *****************    实时接口    ***************************
 
    /**
     * @brief 设置发送实时运动指令网络延迟阈值，即RobotAssist - RCI设置界面中的”包丢失阈值“。
     * 请在切换到RtCommand模式前进行设置，否则不生效。
-    * @param[in] percent 允许的范围0 - 100
+    * @param[in] percent 允许的范围0 - 100。Linux下运行建议20%以上; Windows下运行建议60%以上
     * @param[out] ec 错误码
     */
    void setRtNetworkTolerance(unsigned percent, error_code& ec) noexcept;
@@ -808,6 +1220,8 @@ namespace rokae {
     */
    void disableCollisionDetection(error_code& ec) noexcept;
 
+  protected:
+   BaseCobot();
  };
 
  /**
@@ -867,23 +1281,24 @@ namespace rokae {
    void enableCollisionDetection(const std::array<double, DoF> &sensitivity, StopLevel behaviour,
                                  double fallback_compliance, error_code &ec) noexcept;
 
+   /**
+    * @brief 力传感器标定。标定过程需要约100ms, 该函数不会阻塞等待标定完成。
+    * 标定前需要通过setToolset()设置正确的负载(Toolset::load), 否则会影响标定结果准确性。
+    * @param[in] all_axes true - 标定所有轴 | false - 单轴标定
+    * @param[in] axis_index 轴下标, 范围[0, DoF), 仅当单轴标定时生效
+    * @param[out] ec 错误码
+    */
+   void calibrateForceSensor(bool all_axes, int axis_index, error_code &ec) noexcept;
+
    // *********************************************************************
    // *********************          力控指令            ********************
 
    /**
-    * @brief 获取当前力矩信息
-    * @param[in] ref_type 力矩相对的参考系：
-    *     1) FrameType::world - 末端相对世界坐标系的力矩信息
-    *     2) FrameType::flange - 末端相对于法兰盘的力矩信息
-    *     3) FrameType::tool - 末端相对于TCP点的力矩信息
-    * @param[out] joint_torque_measured 各轴测量力
-    * @param[out] external_torque_measured 各轴外部力
-    * @param[out] cart_torque 笛卡尔空间力矩 [X, Y, Z], 单位Nm
-    * @param[out] cart_force 笛卡尔空间力 [X, Y, Z], 单位N
-    * @param[out] ec 错误码
+    * @brief 力控指令类
+    * @return ForceControl_T
     */
-   void getEndTorque(FrameType ref_type, std::array<double, DoF> &joint_torque_measured, std::array<double, DoF> &external_torque_measured,
-                     std::array<double, 3> &cart_torque, std::array<double, 3> &cart_force, error_code &ec) noexcept;
+   ForceControl_T<DoF> forceControl() noexcept;
+
 
 #ifdef XMATEMODEL_LIB_SUPPORTED
    /**
@@ -920,10 +1335,10 @@ namespace rokae {
    /**
     * @brief default constructor
     */
-   xMateRobot() = default;
+   xMateRobot();
 
    /**
-    * @brief 创建机器人示例并连接
+    * @brief 创建机器人实例并连接
     * @param remoteIP 机器人IP地址
     * @param localIP 本机地址，实时收发数据时需要设置
     * @throw NetworkException 网络连接错误
@@ -932,41 +1347,55 @@ namespace rokae {
    explicit xMateRobot(const std::string &remoteIP, const std::string& localIP = "");
 
    /**
-    * @brief 适用于xMateCR和xMateSR系列机型，打开后，机械臂将在受限的笛卡尔自由度下运动，
-    * 目前是通过锁住机械臂4轴的方式来规避奇异点, 避免出现奇异和尖点问题。
-    * @param[in] enable true - 打开功能 | false - 关闭。打开之前要确保4轴处于零位。
+    * @brief 打开/关闭奇异点规避功能。只适用于部分机型:
+    *   1) 四轴锁定: 支持xMateCR和xMateSR机型；
+    *   2) 牺牲姿态: 支持所有协作六轴机型；
+    *   3) 轴空间插补: 不支持
+    * @param[in] method 奇异规避方式
+    * @param[in] enable true - 打开功能 | false - 关闭;
+    * 对于四轴锁定方式, 打开之前要确保4轴处于零位。
+    * @param[in] limit 不同的规避方式，该参数含义分别为:
+    *   1) 牺牲姿态: 允许的姿态误差, 范围 (0, PI*2], 单位弧度
+    *   2) 四轴锁定: 无参数
     * @param[out] ec 错误码
     */
-   void setAvoidSingularity(bool enable, error_code &ec) noexcept;
+   void setAvoidSingularity(AvoidSingularityMethod method, bool enable, double limit, error_code &ec) noexcept;
 
    /**
     * @brief 查询是否处于规避奇异点的状态
+    * @param[in] method 奇异规避的方式
     * @param[out] ec 错误码
     * @return true - 已打开
     */
-   bool getAvoidSingularity(error_code &ec) noexcept;
+   bool getAvoidSingularity(AvoidSingularityMethod method, error_code &ec) noexcept;
+ };
+
+ /**
+  * @class xMateCr5Robot
+  * @brief 5轴协作机器人, 包括 XMC17_5/XMC25_5
+  */
+ class XCORE_API xMateCr5Robot : public Cobot<5> {
+  public:
+   /**
+	* @brief default constructor
+	*/
+   xMateCr5Robot();
 
    /**
-    * @brief 开始jog机器人，需要切换到手动操作模式。
-    * @note 调用此接口并且机器人开始运动后，无论机器人是否已经自行停止，都必须调用stop()来结束jog操作，否则机器人会一直处于jog的运行状态。
-    * @param[in] space jog参考坐标系。
-    *     1) 工具/工件坐标系使用原则同setToolset();
-    *     2) xMateCR和xMateSR机型支持两种奇异规避方式Jog：Space::singularityAvoidMode, Space::baseParallelMode
-    * @param[in] rate 速率, 范围 0.01 - 1
-    * @param[in] step 步长。单位: 笛卡尔空间-毫米 | 轴空间-度。步长大于0即可，不设置上限，
-    *             如果机器人无法继续jog会自行停止运动。
-    * @param[in] index 根据不同的space，该参数含义如下：
-    *     1) 世界坐标系,基坐标系,法兰坐标系,工具工件坐标系: 0~5分别对应X, Y, Z, Rx, Ry, Rz
-    *     2) 轴空间: 关节序号，从0开始计数
-    *     3) 奇异规避模式,平行基座模式: 0~5分别对应X, Y, Z, J4(4轴), Ry, J6(6轴)
-    * @param[in] direction 根据不同的space和index，该参数含义如下：
-    *     1) 奇异规避模式 J4: true - ±180° | false - 0°;
-    *     2) 平行基座模式 J4 & Ry: true - ±180° | false - 0°
-    *     3) 其它，true - 正向 | false - 负向
-    * @param[out] ec 错误码
-    */
-   virtual void startJog(JogOpt::Space space, double rate, double step, unsigned index, bool direction, error_code &ec) noexcept override;
+	* @brief 创建机器人实例并连接
+	* @param remoteIP 机器人IP地址
+	* @param localIP 本机地址，实时收发数据时需要设置
+	* @throw NetworkException 网络连接错误
+	* @throw ExecutionException 机器人实例与连接机型不符，或未授权SDK
+	*/
+   explicit xMateCr5Robot(const std::string &remoteIP, const std::string& localIP = "");
 
+   /**
+    * @brief 是否使能平行基座模式
+    * @param enable 使能，true: 开启，false: 关闭
+    * @param ec 错误码
+    */
+   void enableCompletePostureLerp(bool enable, error_code& ec) noexcept;
  };
 
  /**
@@ -978,10 +1407,10 @@ namespace rokae {
    /**
     * @brief default constructor
     */
-   xMateErProRobot() = default;
+   xMateErProRobot();
 
    /**
-    * @brief 创建协作7轴机器人示例并连接
+    * @brief 创建协作7轴机器人实例并连接
     * @param remoteIP 机器人IP地址
     * @param localIP 本机地址，实时收发数据时需要设置
     * @throw NetworkException 网络连接错误
@@ -1046,6 +1475,27 @@ namespace rokae {
     */
    void setRtNetworkTolerance(unsigned percent, error_code &ec) noexcept;
 
+   /**
+    * @brief 打开/关闭奇异点规避功能
+    * @param[in] method 奇异规避方式，三种方式都支持
+    * @param[in] enable true - 打开功能 | false - 关闭;
+    * 对于四轴锁定方式, 打开之前要确保4轴处于零位
+    * @param[in] threshold 不同的规避方式，该参数含义分别为:
+    *   1) 牺牲姿态: 允许的姿态误差, 范围 (0, PI*2], 单位弧度
+    *   2) 轴空间插补: 规避半径, 范围[0.005, 10], 单位米
+    *   3) 四轴锁定: 无参数
+    * @param[out] ec 错误码
+    */
+   void setAvoidSingularity(AvoidSingularityMethod method, bool enable, double threshold, error_code &ec) noexcept;
+
+   /**
+    * @brief 查询是否处于规避奇异点的状态
+    * @param[in] method 奇异规避的方式
+    * @param[out] ec 错误码
+    * @return true - 已打开
+    */
+   bool getAvoidSingularity(AvoidSingularityMethod method, error_code &ec) noexcept;
+
   XCORESDK_DECLARE_IMPLD
  };
 
@@ -1058,7 +1508,7 @@ namespace rokae {
    /**
     * @brief Default constructor
     */
-   PCB3Robot() = default;
+   PCB3Robot();
 
    /**
     * @brief 创建PCB3机器人实例并连接
@@ -1077,7 +1527,7 @@ namespace rokae {
    /**
     * @brief Default constructor
     */
-   PCB4Robot() = default;
+   PCB4Robot();
 
    /**
     * @brief 创建PCB4机器人实例并连接

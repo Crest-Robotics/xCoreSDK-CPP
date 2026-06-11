@@ -9,8 +9,6 @@ add_compile_definitions(
     # if linking the shared library, add a macro for MSVC dllimport attribute
     $<$<BOOL:${XCORE_LINK_SHARED_LIBS}>:XCORESDK_DLL>)
 
-add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
-
 # Here puts required example source files
 set(EXAMPLES
     sdk_example
@@ -18,10 +16,15 @@ set(EXAMPLES
     path_record
     rl_project
     read_robot_state
+    force_control_commands
+    communication_example
+    modbusRTU_endtool_control
+    controller_upgrade
     )
 
 set(EXAMPLE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/print_helper.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/function_helper.hpp
 )
 
 # threading
@@ -33,8 +36,12 @@ foreach(example ${EXAMPLES})
     target_include_directories(${example} PUBLIC
         ${SHARED_INCLUDEDIR})
     target_link_libraries(${example} Rokae::Rokae Threads::Threads eigen)
-
 endforeach()
+
+# link Upgrade library to controller upgrade example
+target_link_libraries(controller_upgrade Rokae::Upgrade)
+target_include_directories(controller_upgrade PUBLIC
+    ${SHARED_INCLUDEDIR} )
 
 # check for xMateModel library option
 if(XCORE_USE_XMATE_MODEL)

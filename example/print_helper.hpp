@@ -2,7 +2,7 @@
  * @file print_helper.hpp
  * @brief 打印接口调用结果
  *
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -18,6 +18,9 @@
 #include "rokae/robot.h"
 #include "rokae/data_types.h"
 
+/**
+ * @brief OperationState formatter
+ */
 inline std::ostream &operator<<(std::ostream &os, rokae::OperationState st) {
   using OP = rokae::OperationState;
   switch(st) {
@@ -37,6 +40,18 @@ inline std::ostream &operator<<(std::ostream &os, rokae::OperationState st) {
   return os;
 }
 
+inline std::ostream &operator<<(std::ostream &os, rokae::OperateMode mode) {
+  switch(mode) {
+    case rokae::OperateMode::automatic: os << "自动"; break;
+    case rokae::OperateMode::manual: os << "手动"; break;
+    case rokae::OperateMode::unknown: default: os << "未知"; break;
+  }
+  return os;
+}
+
+/**
+ * @brief std::array formatter
+ */
 template <class T, size_t S>
 inline std::ostream &operator<<(std::ostream &os, const std::array<T,S> &arr) {
   os << "[ ";
@@ -46,6 +61,9 @@ inline std::ostream &operator<<(std::ostream &os, const std::array<T,S> &arr) {
   return os;
 }
 
+/**
+ * @brief std::vecotr formatter
+ */
 template <class T>
 inline std::ostream &operator<<(std::ostream &os, const std::vector<T> &arr) {
   os << "[ ";
@@ -55,17 +73,26 @@ inline std::ostream &operator<<(std::ostream &os, const std::vector<T> &arr) {
   return os;
 }
 
+/**
+ * @brief Info formatter
+ */
 inline std::ostream &operator<<(std::ostream &os, const rokae::Info &info) {
   os << "控制器版本 " << info.version << " | 机型 " << info.type << " | 轴数 " << info.joint_num;
   return os;
 }
 
+/**
+ * @brief Frame formatter
+ */
 inline std::ostream &operator<<(std::ostream &os, const rokae::Frame &frame) {
   os << "[ X: " << frame.trans[0] << " Y: " << frame.trans[1] << " Z: " << frame.trans[2] <<
      " A: " << frame.rpy[0] << " B: " << frame.rpy[1] << " C: " << frame.rpy[2] << " ]";
   return os;
 }
 
+/**
+ * @brief CartesianPosition formatter
+ */
 inline std::ostream &operator<<(std::ostream &os, const rokae::CartesianPosition &cart) {
   os << "位姿 - [ X: " << cart.trans[0] << " Y: " << cart.trans[1] << " Z: " << cart.trans[2] <<
      " Rx: " << cart.rpy[0] << " Ry: " << cart.rpy[1] << " Rz: " << cart.rpy[2] << " ]";
@@ -80,25 +107,37 @@ inline std::ostream &operator<<(std::ostream &os, const rokae::CartesianPosition
   return os;
 }
 
+/**
+ * @brief Load formatter
+ */
 inline std::ostream &operator<<(std::ostream &os, const rokae::Load &load) {
   os << "质量: " << load.mass << "kg, 重心 X: " << load.cog[0] << " Y: " << load.cog[1] << " Z: " << load.cog[2] <<
      ", 惯量 ix: " << load.inertia[0] << " iy: " << load.inertia[1] << " iz: " << load.inertia[2];
   return os;
 }
 
+/**
+ * @brief Toolset formatter
+ */
 inline std::ostream &operator<<(std::ostream &os, const rokae::Toolset &toolset) {
   os << "手持 - " << toolset.end << "\n外部 - " << toolset.ref <<
      "\n负载 - " << toolset.load;
   return os;
 }
 
+/**
+ * @brief std::error_code formatter
+ */
 inline std::ostream &operator<<(std::ostream &os, const std::error_code &ec){
   if(ec) {
-    os << ec.message();
+    os << ec.message() <<"(" << ec.value() << ")";
   }
   return os;
 }
 
+/**
+ * @brief out stream
+ */
 template <typename... Args>
 void print(std::ostream &os, Args&&... args) {
   ((os << ' '<< std::forward<Args>(args)), ...) << std::endl;

@@ -2,7 +2,7 @@
  * @file path_record.cpp
  * @brief 协作机型拖动示教，路径录制和回放
  *
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -11,6 +11,7 @@
 #include <thread>
 #include <unordered_map>
 #include "rokae/robot.h"
+#include "print_helper.hpp"
 
 using namespace std;
 using namespace rokae;
@@ -19,6 +20,19 @@ char parseInput(std::string &str);
 void WaitRobot(BaseRobot *robot);
 void printHelp();
 
+/**
+ * @brief 打印运动执行信息
+ */
+void printInfo(const rokae::EventInfo &info) {
+  using namespace rokae::EventInfoKey::MoveExecution;
+  print(std::cout, "[运动执行信息] ID:", std::any_cast<std::string>(info.at(ID)), "Index:", std::any_cast<int>(info.at(WaypointIndex)),
+        "已完成: ", std::any_cast<bool>(info.at(ReachTarget)) ? "YES": "NO", std::any_cast<error_code>(info.at(Error)),
+        std::any_cast<std::string>(info.at(Remark)));
+}
+
+/**
+ * @brief main program
+ */
 int main() {
   try {
     std::string ip = "192.168.0.160";
@@ -27,6 +41,8 @@ int main() {
     xMateRobot robot(ip); // xMate 6轴机型
 
     robot.setMotionControlMode(MotionControlMode::NrtCommand, ec);
+    // 拖动回放指令和其它运动指令类似，也通过运动信息回调的方式反馈运动完成
+    robot.setEventWatcher(Event::moveExecution, printInfo, ec);
 
     printHelp();
 
@@ -79,6 +95,8 @@ int main() {
         case 'r': {
           robot.replayPath(str, 1.0, ec);
           if (ec) break;
+          robot.moveStart(ec);
+          if (ec) break;
           cout << "* 开始回放路径\"" << str << "\", 速率100%\n";
           WaitRobot(&robot);
           cout << "* 回放结束\n";
@@ -119,8 +137,11 @@ static const std::unordered_map<std::string, char> ConsoleInput = {
   {"reset", 'z'},
   {"replay", 'r'},
   {"help", 'h'}
-};
+}; ///< command -> char
 
+/**
+ * @brief 打印说明
+ */
 void printHelp() {
   cout << " --- 拖动与路径回放使用示例 --- " << endl
        << "格式 <命令>[:参数] 例如 save:track0" << endl << endl
@@ -139,6 +160,9 @@ void printHelp() {
        << "quit    结束\n";
 }
 
+/**
+ * @brief 处理控制台输入
+ */
 char parseInput(std::string &str) {
   size_t delimiter;
   std::string cmd(str);

@@ -1,8 +1,10 @@
 ﻿/**
  * @file rt_industrial.cpp
  * @brief 实时模式 - 工业6轴机型支持位置控制
+ * @attention 实时模式的MoveJ/MoveL/MoveC已不建议使用，请使用非实时模式下的MoveAbsJCommand/MoveLCommand/MoveCCommand。
+ * 本示例仅作调用方法展示
  *
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -17,8 +19,11 @@
 
 using namespace rokae;
 
-std::ostream &os = std::cout;
+std::ostream &os = std::cout; ///< print to console
 
+/**
+ * @brief main program
+ */
 int main() {
   using namespace std;
   try {

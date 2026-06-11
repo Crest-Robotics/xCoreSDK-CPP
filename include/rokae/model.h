@@ -1,7 +1,7 @@
 ﻿/**
  * @file model.h
  * @brief xMateModel模型库
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -14,11 +14,11 @@
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
 #include "base.h"
-#include "rokae/data_types.h"
+#include "data_types.h"
 
 namespace rokae {
 
-// forward declarations
+ // forward declarations
  class BaseRobot;
  class XService;
  struct Info;
@@ -30,49 +30,19 @@ namespace rokae {
  class XCORE_API BaseModel : public Base<BaseModel>{
   public:
 
-  /// @cond DO_NOT_DOCUMENT
+   /// @cond DO_NOT_DOCUMENT
    explicit BaseModel(std::shared_ptr<XService> rpc);
    virtual ~BaseModel();
-  /// @endcond
+   /// @endcond
 
    /**
-    * @brief 用户定义的基坐标系, 相对于世界坐标系
-    * @param[out] ec 错误码
-    * @return 数组, 长度: \f$ \mathbb{R}^{6 \times 1} \f$ = \f$ \mathbb{R}^{3 \times 1} \f$
-    * transformation and \f$ \mathbb{R}^{3 \times 1} \f$ rotation \f$ [x, y, z, a, b, c]^T \f$.
+    * @brief 计算笛卡尔位姿所有逆解结果。支持除xMateSR(XMS)之外的所有机型
+    * @param[in] posture 笛卡尔位姿，法兰相对与基座标系。其它坐标系需自行转换。
+    * @param[out] confs 对应的confdata，错误码为0时有效
+    * @param[out] ec 错误码，含逆解计算失败错误：-50102奇异点 | -50114 超限位 | -50519 超范围 | -50002 其它逆解错误
+    * @return 逆解结果，单位弧度，错误码为0时有效
     */
-   [[deprecated("Use BaseRobot::baseFrame() instead")]]
-   std::array<double, 6> baseFrame(error_code &ec) const noexcept;
-
-   /**
-    * @brief 查询当前工具工件组信息
-    * @note 此工具工件组仅为SDK运动控制使用, 不与RL工程相关.
-    * @param[out] ec 错误码
-    */
-   [[deprecated("Use BaseRobot::toolset() instead")]]
-   Toolset toolset(std::error_code &ec) const noexcept;
-
-   /**
-    * @brief 设置工具工件组信息
-    * @note 此工具工件组仅为SDK运动控制使用, 不与RL工程相关.
-    *       除此接口外, 如果通过RobotAssist更改默认工具工件(右上角的选项), 该工具工件组也会相应更改.
-    * @param[in] toolset 工具工件组信息
-    * @param[out] ec 错误码
-    */
-   [[deprecated("Use BaseRobot::setToolset() instead")]]
-   void setToolset(const Toolset& toolset, error_code &ec) noexcept;
-
-   /**
-    * @brief 使用已创建的工具和工件，设置工具工件组信息
-    * @note 设置前提: 已加载一个RL工程，且创建了工具和工件。否则，只能设置为默认的工具工件，即"tool0"和"wobj0"。
-    * 一组工具工件无法同时为手持或外部；如果有冲突，以工具的位置为准，例如工具工件同时为手持，不会返回错误，但是工件的坐标系变成了外部
-    * @param[in] toolName 工具名称
-    * @param[in] wobjName 工件名称
-    * @param[out] ec 错误码
-    * @return 设置后的工具工件组信息。当发生错误设置失败时，返回Toolset类型初始化默认值0
-    */
-   [[deprecated("Use BaseRobot::setToolset() instead")]]
-   Toolset setToolset(const std::string &toolName, const std::string &wobjName, error_code &ec) noexcept;
+   std::vector<std::vector<double>> calcAllIkSolutions(const CartesianPosition &posture, std::vector<std::vector<int>> &confs, error_code &ec) noexcept;
 
   XCORESDK_DECLARE_IMPL
  };
@@ -89,20 +59,42 @@ namespace rokae {
    using BaseModel::BaseModel;
 
    /**
-    * @brief 根据位姿计算逆解
-    * @param[in] posture 机器人末端位姿，相对于外部参考坐标系
+    * @brief 根据位姿计算逆解。逆解选解策略:
+    *   1) 默认Conf关闭时，选择离当前位置最近的解
+    *   2) 默认Conf打开时，用confData计算
+    * @param[in] posture 机器人末端位姿，相对于外部参考坐标系。参考的坐标系是通过setToolset()设置的
     * @param[out] ec 错误码
     * @return 轴角度, 单位:弧度
     */
    std::array<double, DoF> calcIk(CartesianPosition posture, error_code &ec) noexcept;
 
    /**
-    * @brief 根据轴角度计算正解
+    * @brief 根据位姿计算给定工具工件坐标系下逆解。逆解选解策略:
+    *   1) 默认Conf关闭时，选择离当前位置最近的解
+    *   2) 默认Conf打开时，用confData计算
+    * @param[in] posture 机器人末端位姿，相对于外部参考坐标系
+    * @param[in] tool_set 工具工件坐标系
+    * @param[out] ec 错误码
+    * @return 轴角度, 单位:弧度
+    */
+   std::array<double,DoF> calcIk(CartesianPosition posture,const Toolset &tool_set, error_code& ec) noexcept;
+
+   /**
+    * @brief 根据轴角度计算正解。
     * @param[in] joints 轴角度, 单位: 弧度
     * @param[out] ec 错误码
-    * @return 机器人末端位姿，相对于外部参考坐标系
+    * @return 机器人末端位姿，相对于外部参考坐标系。参考的坐标系是通过setToolset()设置的
     */
    CartesianPosition calcFk(const std::array<double, DoF> &joints, error_code &ec) noexcept;
+
+   /**
+    * @brief 根据轴角度计算给定工具工件坐标系下正解
+    * @param joints 轴角度, 单位: 弧度
+    * @param tool_set 工具工件坐标系
+    * @param ec 错误码
+    * @return 机器人末端位姿，相对于外部参考坐标系
+    */
+   CartesianPosition calcFk(const std::array<double,DoF> &joints,const Toolset &tool_set, error_code& ec) noexcept;
 
  };
 
@@ -128,6 +120,12 @@ namespace rokae {
 
 #ifdef XMATEMODEL_LIB_SUPPORTED
 
+ /**
+  * @class xMateModel
+  * @brief xMate模型库。支持的机型: xMateER系列, XMC7/12, XMS3/4/5。
+  * 注意：对于XMS5机型，需要升级特殊版本的机型文件后方可使用模型库，否则计算结果是错误的，请联系珞石技术支持人员进行机型文件升级。
+  * @tparam DoF 轴数
+  */
  template <unsigned short DoF>
  class XCORE_API xMateModel : public Model_T<DoF> {
 
@@ -245,46 +243,14 @@ namespace rokae {
                                       SegmentFrame nr = SegmentFrame::flange);
 
    /**
-    * @brief 由模型计算关节力矩
-    * @param[in] jntPos 关节角度
-    * @param[in] jntVel 关节角速度
-    * @param[in] jntAcc 关节角加速度
-    * @param[in] torque_type 指定力矩类型
-    * @return 计算结果，单位: Nm
-    */
-   std::array<double, DoF> getTorque(const std::array<double, DoF> &jntPos,
-                                     const std::array<double, DoF> &jntVel,
-                                     const std::array<double, DoF> &jntAcc,
-                                     TorqueType torque_type);
-
-   /**
-    * @brief 由模型计算关节力矩，计算结果单位：Nm。如有负载，先通过setLoad()设置负载参数。
-    * @param[in] jntPos 关节角度
-    * @param[in] jntVel 关节角速度
-    * @param[in] jntAcc 关节角加速度
-    * @param[out] trq_full 总关节力矩
-    * @param[out] trq_inertia 离心力
-    * @param[out] trq_coriolis 科氏力
-    * @param[out] trq_friction 关节摩擦力
-    * @param[out] trq_gravity 重力矩
-    */
-   void getTorqueWithFriction(const std::array<double, DoF> &jntPos,
-                              const std::array<double, DoF> &jntVel,
-                              const std::array<double, DoF> &jntAcc,
-                              std::array<double, DoF> &trq_full,
-                              std::array<double, DoF> &trq_inertia,
-                              std::array<double, DoF> &trq_coriolis,
-                              std::array<double, DoF> &trq_friction,
-                              std::array<double, DoF> &trq_gravity);
-
-   /**
     * @brief 由模型计算无摩擦力的关节力矩, 计算结果单位: Nm。如有负载，先通过setLoad()设置负载参数。
+    * @note 原getTorque() 和 getTorqueWithFriction不再支持，计算关节力矩都用此接口
     * @param[in] jntPos 关节角度
     * @param[in] jntVel 关节角速度
     * @param[in] jntAcc 关节角加速度
     * @param[out] trq_full 总关节力矩
-    * @param[out] trq_inertia 离心力
-    * @param[out] trq_coriolis 科氏力
+    * @param[out] trq_inertia 惯性力
+    * @param[out] trq_coriolis 科氏力，包括离心力
     * @param[out] trq_gravity 重力矩
     */
    void getTorqueNoFriction(const std::array<double, DoF> &jntPos,

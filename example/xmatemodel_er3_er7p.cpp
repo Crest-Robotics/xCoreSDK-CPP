@@ -3,7 +3,7 @@
  * @brief xMate运动学和动力学计算库，以xMate3和xMateEr7Pro为例
  * 此示例需要使用xMateModel模型库，请设置编译选项XCORE_USE_XMATE_MODEL=ON
  *
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -15,8 +15,11 @@
 using namespace std;
 using namespace rokae;
 
-ostream &os = std::cout; // print to console
+ostream &os = std::cout; ///< print to console
 
+/**
+ * @brief xMateER7 Pro示例
+ */
 void xMateErPro7_model(xMateModel<7> &model) {
   try {
     std::array<double, 7> zeros = {0, 0, 0, 0, 0, 0, 0},
@@ -38,7 +41,6 @@ void xMateErPro7_model(xMateModel<7> &model) {
     print(os, "TorqueNoFriction coriolis -", array3);
     print(os, "TorqueNoFriction gravity -", array4);
 
-    print(os, "Torque inertia -", model.getTorque(zeros, zeros, zeros, TorqueType::inertia));
 
     auto pos = model.getCartPose(jointPos_in);
     print(os, "Flange posture -", pos);
@@ -73,7 +75,9 @@ void xMateErPro7_model(xMateModel<7> &model) {
   }
 }
 
-
+/**
+ * @brief xMateER3示例
+ */
 void xMateEr3_model(xMateModel<6> &model) {
   try {
     std::array<double, 6> zeros {},
@@ -93,8 +97,6 @@ void xMateEr3_model(xMateModel<6> &model) {
     print(os, "TorqueNoFriction inertia -", array2);
     print(os, "TorqueNoFriction coriolis -", array3);
     print(os, "TorqueNoFriction gravity -", array4);
-
-    print(os, "Torque inertia -", model.getTorque(zeros, zeros, zeros, TorqueType::inertia));
 
     auto pos = model.getCartPose(jointPos_in);
     print(os, "Flange posture -", pos);
@@ -129,6 +131,9 @@ void xMateEr3_model(xMateModel<6> &model) {
   }
 }
 
+/**
+ * @brief main program
+ */
 int main() {
   bool test_Er3 = false;
   try {

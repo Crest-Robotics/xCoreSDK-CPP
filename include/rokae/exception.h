@@ -1,7 +1,7 @@
 ﻿/**
  * @file exception.h
  * @brief 异常类
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -26,18 +26,16 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param detailEN English ver.
-    * @param detailCN Chinese ver.
+    * @param detail detail message.
     */
-   explicit Exception(const std::string &detailEN, const std::string &detailCN);
+   explicit Exception(const std::string &detail);
    /**
     * @brief 异常信息
     */
    const char* what() const noexcept override;
 
   protected:
-   const std::string detailEN_; ///< English ver.
-   const std::string detailCN_; ///< Chinese ver.
+   const std::string detail_; ///< detail msg.
  };
 
 /**
@@ -48,10 +46,9 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param en English ver.
-    * @param cn Chinese ver.
+    * @param detail detail message
     */
-   explicit NetworkException(const std::string &en, const std::string &cn);
+   explicit NetworkException(const std::string &detail);
  };
 
 /**
@@ -62,10 +59,9 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param en English ver.
-    * @param cn Chinese ver.
+    * @param detail detail message
     */
-   explicit ArgumentException(const std::string &en, const std::string &cn);
+   explicit ArgumentException(const std::string &detail);
  };
 /**
  * @class ExecutionException
@@ -75,10 +71,9 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param en English ver.
-    * @param cn Chinese ver.
+    * @param detail detail message
     */
-   explicit ExecutionException (const std::string &en, const std::string &cn);
+   explicit ExecutionException (const std::string &detail);
  };
 
 /**
@@ -89,10 +84,9 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param en English ver.
-    * @param cn Chinese ver.
+    * @param detail detail message
     */
-   explicit ProtocolException(const std::string &en, const std::string &cn);
+   explicit ProtocolException(const std::string &detail);
  };
 
 /**
@@ -103,10 +97,9 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param en English ver.
-    * @param cn Chinese ver.
+    * @param detail detail message
     */
-   explicit InvalidOperationException(const std::string &en, const std::string &cn);
+   explicit InvalidOperationException(const std::string &detail);
  };
 
 /**
@@ -117,10 +110,9 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param en English ver.
-    * @param cn Chinese ver.
+    * @param detail detail message
     */
-   explicit RealtimeControlException(const std::string &en, const std::string &cn);
+   explicit RealtimeControlException(const std::string &detail);
  };
 
 /**
@@ -131,10 +123,9 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param en English ver.
-    * @param cn Chinese ver.
+    * @param detail detail message
     */
-   explicit RealtimeMotionException(const std::string &en, const std::string &cn);
+   explicit RealtimeMotionException(const std::string &detail);
  };
 
 /**
@@ -145,10 +136,9 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param en English ver.
-    * @param cn Chinese ver.
+    * @param detail detail message
     */
-   explicit RealtimeStateException(const std::string &en, const std::string &cn);
+   explicit RealtimeStateException(const std::string &detail);
  };
 /**
  * @class RealtimeParameterException
@@ -158,10 +148,9 @@ namespace rokae {
   public:
    /**
     * @brief constructor
-    * @param en English ver.
-    * @param cn Chinese ver.
+    * @param detail detail message
     */
-   explicit RealtimeParameterException(const std::string &en, const std::string &cn);
+   explicit RealtimeParameterException(const std::string &detail);
  };
 }// namespace rokae
 

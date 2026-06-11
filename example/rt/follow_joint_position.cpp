@@ -1,9 +1,9 @@
 ﻿/**
  * @file follow_joint_position.cpp
- * @brief 实时模式 - 点位跟随功能
+ * @brief 实时模式 - 关节点位跟随功能
  * 此功能需要使用xMateModel模型库，请设置编译选项XCORE_USE_XMATE_MODEL=ON
  *
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -12,42 +12,106 @@
 #include <atomic>
 #include "rokae/robot.h"
 #include "../print_helper.hpp"
+#include "../function_helper.hpp"
 
-std::atomic_bool running = true;
-std::ostream &os = std::cout;
-std::array<double, 7u> q_drag_xm7p = { 0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0 };
-std::array<double, 6u> q_drag_er3 = { 0, M_PI/6, M_PI/3, 0, M_PI/2, 0 };
-std::array<double, 6u> q_drag_cr7 = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 };
-std::array<double, 6u> q_drag_sr3 = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 };
+std::atomic_bool running = true; ///< running state flag
+std::ostream &os = std::cout; ///< print to console
+std::vector<double> q_drag_xm7p = { 0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER Pro拖拽位姿
+std::vector<double> q_drag_er3 = { 0, M_PI/6, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER拖拽位姿
+std::vector<double> q_drag_cr7 = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 }; ///< CR拖拽位姿
+std::vector<double> q_drag_sr3 = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 }; ///< SR拖拽位姿
 
 std::vector<std::array<double, 6>> points_xMateSR3();
 std::vector<std::array<double, 6>> points_xMateER3();
 std::vector<std::array<double, 6>> points_xMateCR();
 std::vector<std::array<double, 7>> points_xMateERPro();
 
-void example_followPosition(rokae::xMateRobot &robot,
-                   const std::array<double, 6> &start_jnt,
-                            const  std::vector<std::array<double, 6>> &points_list) {
+/**
+ * @brief 跟随关节点位-6轴
+ */
+void example_followPosition6(rokae::xMateRobot& robot,
+                             const std::vector<double>& start_jnt,
+                             const std::vector<std::array<double, 6>>& points_list) {
   auto rtCon = robot.getRtMotionController().lock();
   std::thread updater;
   error_code ec;
   try {
-    rtCon->MoveJ(0.3, robot.jointPos(ec), start_jnt);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-
     auto model = robot.model();
     rokae::FollowPosition follow_pose(robot, model);
 
-    print(os, "开始跟随");
-    Eigen::Transform<double, 3, Eigen::Isometry> bMe_desire = Eigen::Transform<double, 3, Eigen::Isometry>::Identity();
-    // 四元数0, 0, 1, 0, 转换成欧拉角是 A - 180, B - 0, C - 180
-    bMe_desire.rotate(Eigen::Quaterniond(0.0, 0.0, 1.0, 0.0));
-    // X - 0.464, Y - 0.136, Z - 0.364
-    bMe_desire.pretranslate(Eigen::Vector3d(0.464, 0.136, 0.364));
-    follow_pose.start(bMe_desire);
+    print(os, "开始跟随, [q]结束");
+    // 起点根据需要设置，不要求是当前位置
+    follow_pose.start(robot.jointPos(ec));
 
     updater = std::thread([&]() {
-      std::this_thread::sleep_for(std::chrono::seconds(2));
+      std::this_thread::sleep_for(std::chrono::milliseconds(600));
+      follow_pose.setScale(2);
+      auto it = points_list.begin();
+      while (running) {
+        // 模拟每600ms更新一次位置
+        while (running) {
+          follow_pose.update(*it++);
+          std::this_thread::sleep_for(std::chrono::milliseconds(600));
+          if (it == points_list.end()) {
+            it--;
+            break;
+          }
+        }
+        while (running) {
+          follow_pose.update(*it--);
+          std::this_thread::sleep_for(std::chrono::milliseconds(600));
+          if (it == points_list.begin()) {
+            break;
+          }
+        }
+      }
+
+    });
+    std::thread consoleInput([] {
+      while (getchar() != 'q'); // press 'q' to stop
+      running = false;
+    });
+    consoleInput.detach();
+    while (running);
+
+    follow_pose.stop();
+    updater.join();
+  }
+  catch (const std::exception& e) {
+    print(std::cerr, e.what());
+    if (updater.joinable()) {
+      running = false;
+      updater.join();
+    }
+  }
+
+  // 运动结束，将控制模式设为空闲并下电
+  robot.setMotionControlMode(rokae::MotionControlMode::Idle, ec);
+  robot.setOperateMode(rokae::OperateMode::manual, ec);
+  robot.setPowerState(false, ec);
+}
+
+/**
+ * @brief 跟随关节点位-7轴
+ */
+void example_followPosition7(rokae::xMateErProRobot &robot,
+                             const std::vector<double> &start_jnt,
+                             const std::vector<std::array<double, 7>> &points_list) {
+  //获取运动控制器
+  auto rtCon = robot.getRtMotionController().lock();
+  //初始化线程和错误代码
+  std::thread updater;
+  error_code ec;
+  try {
+    //创建跟随位置对象
+    auto model = robot.model();
+    rokae::FollowPosition follow_pose(robot, model);
+
+    print(os, "开始跟随, [q]结束");
+    follow_pose.start(robot.jointPos(ec));
+
+    updater = std::thread([&]() {
+      std::this_thread::sleep_for(std::chrono::milliseconds (600));
       follow_pose.setScale(2);
       auto it = points_list.begin();
       while(running) {
@@ -86,8 +150,16 @@ void example_followPosition(rokae::xMateRobot &robot,
       updater.join();
     }
   }
+  print(std::cout, "跟随结束");
+
+  // 运动结束，将控制模式设为空闲并下电
+  robot.setMotionControlMode(rokae::MotionControlMode::Idle, ec);
+  robot.setPowerState(false, ec);
 }
 
+/**
+ * @brief main program
+ */
 int main() {
   using namespace rokae;
   using namespace std;
@@ -98,6 +170,7 @@ int main() {
   error_code ec;
   std::thread updater;
   xMateRobot robot;
+  xMateErProRobot robot_pro;
 
   try {
     robot.connectToRobot(remoteIP, localIP);
@@ -105,36 +178,83 @@ int main() {
     std::cerr << e.what();
     return 0;
   }
-  std::string robot_name = robot.robotInfo(ec).type;
+
+  std::vector<double> start_joint;
+  decltype(points_xMateCR()) point_list ;
+  auto robot_info = robot.robotInfo(ec);
+  std::string robot_name = robot_info.type; // 获取机型名
+
+  // 根据机型不同，适用的点位也不同，下方列出本示例测试过的机型
+  // 其它机型建议重新适配点位，确认机械臂运动在安全的区域
+  // xMateCR7/xMateCR12
+  if(robot_name.find("CR7") != std::string::npos || robot_name.find("CR12") != std::string::npos ||
+    robot_name.find("XMC7") != std::string::npos || robot_name.find("XMC12") != std::string::npos) {
+    point_list = points_xMateCR();
+    start_joint = q_drag_cr7;
+  }
+    // xMateSR3/xMateSR4
+  else if(robot_name.find("SR3") != std::string::npos || robot_name.find("SR4") != std::string::npos ||
+    robot_name.find("XMS3") != std::string::npos || robot_name.find("XMS4") != std::string::npos) {
+    point_list = points_xMateSR3();
+    start_joint = q_drag_sr3;
+  }
+    // xMateER3
+  else if(robot_name.find("xMate3") != std::string::npos ){
+    point_list = points_xMateER3();
+    start_joint = q_drag_er3;
+  }
+    // xMateER7 Pro/xMate3 Pro
+  else if (robot_name.find("Pro")!=std::string::npos){
+    start_joint = q_drag_xm7p;
+  } else {
+    print(std::cerr, "示例程序中的点位尚未在该机型上使用过");
+  }
+
+  // 先执行MoveAbsJ指令运动到合适的起点
+  robot.setMotionControlMode(MotionControlMode::NrtCommand, ec);
+  if(ec) {
+    std::cerr << "Switch MotionControlMode error: " << ec << std::endl;
+    return 0;
+  }
+  // 上电
+  robot.setOperateMode(OperateMode::automatic, ec);
+  robot.setPowerState(true, ec);
+
+  std::string id;
+  MoveAbsJCommand absj (start_joint, 100, 0);
+  robot.moveAppend(absj, id, ec);
+  if(ec) {
+    std::cerr << "MoveAbsJ error: " << ec << std::endl;
+    return 0;
+  }
+  robot.moveStart(ec);
+  if(ec) {
+    std::cerr << "MoveStart error: " << ec << std::endl;
+    return 0;
+  }
+  helper::waitRobot(robot); // 等待运动结束
+
+  // 设置通信阈值
   robot.setRtNetworkTolerance(20, ec);
+  // 切换到实时模式控制
   robot.setMotionControlMode(rokae::MotionControlMode::RtCommand, ec);
   robot.setOperateMode(rokae::OperateMode::automatic, ec);
   robot.setPowerState(true, ec);
 
   try {
     auto rtCon = robot.getRtMotionController().lock();
+    // 接收实时状态数据
     robot.startReceiveRobotState(std::chrono::milliseconds(1), {jointPos_m});
   } catch (const std::exception &e) {
     std::cerr << e.what();
     return 0;
   }
 
-  // 根据机型不同，适用的点位也不同，下方列出本示例测试过的机型
-  // 其它机型建议重新适配点位，确认机械臂运动在安全的区域
-  if(robot_name.find("CR7") != std::string::npos || robot_name.find("CR12") != std::string::npos ) {
-    print(std::cout, "Run example for", robot_name);
-    example_followPosition(robot, q_drag_cr7, points_xMateCR());
-  }
-  else if(robot_name.find("SR3") != std::string::npos || robot_name.find("SR4") != std::string::npos) {
-    print(std::cout, "Run example for", robot_name);
-    example_followPosition(robot, q_drag_sr3, points_xMateSR3());
-  }
-  else if(robot_name.find("xMate3") != std::string::npos ){
-    print(std::cout, "Run example for", robot_name);
-    example_followPosition(robot, q_drag_er3, points_xMateER3());
-  }
-  else {
-    print(std::cerr, "示例程序中的点位尚未在该机型上使用过");
+  print(std::cout, "Run example for", robot_name);
+  if(robot_info.joint_num == 6) {
+    example_followPosition6(robot, start_joint, point_list);
+  } else {
+    example_followPosition7(robot_pro, start_joint, points_xMateERPro());
   }
 
   return 0;

@@ -2,7 +2,7 @@ cmake_minimum_required (VERSION 3.12)
 
 #------------------------------------------------------------------------------
 ## Project setup
-project (xCoreSDK VERSION 0.3.4)
+project (xCoreSDK VERSION 0.7.1)
 
 message(STATUS "")
 message(STATUS "    == ${PROJECT_NAME} project configuration ==")

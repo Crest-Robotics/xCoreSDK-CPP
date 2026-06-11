@@ -2,7 +2,7 @@
  * @file sdk_example.cpp
  * @brief SDK各接口使用示例
  *
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -12,9 +12,10 @@
 #include "rokae/robot.h"
 #include "print_helper.hpp"
 #include "rokae/utility.h"
+#include "rokae/model.h"
 
 using namespace rokae;
-std::ostream &os = std::cout;
+std::ostream &os = std::cout; ///< print to console
 
 namespace Workflow {
 
@@ -24,6 +25,14 @@ namespace Workflow {
  template<WorkType Wt, unsigned short DoF>
  class CalibrateFrame {
   public:
+   /**
+    * @brief Constructor
+    * @param robot 已创建好的机器人类
+    * @param type 标定坐标系
+    * @param point_num 传入的位置数量，对应N点法
+    * @param is_held 是否机器人手持
+    * @param base_aux 基坐标系标定辅助点
+    */
    CalibrateFrame(Robot_T<Wt,DoF> &robot, FrameType type, int point_num, bool is_held, const std::array<double, 3> &base_aux = {})
      : robot_(&robot), type_(type), point_list_(point_num), is_held_(is_held), base_aux_(base_aux) {}
 
@@ -41,6 +50,11 @@ namespace Workflow {
      point_list_[point_index] = robot_->jointPos(ec);
    }
 
+   /**
+    * @brief 所有标定位置已确认，得到标定结果
+    * @param ec 标定结果错误码
+    * @return 标定结果
+    */
    FrameCalibrationResult confirm(error_code &ec) {
      return robot_->calibrateFrame(type_, point_list_, is_held_, ec, base_aux_);
    }
@@ -94,7 +108,7 @@ namespace Workflow {
    for(unsigned i = 0; i < DoF; ++i) {
      if(jog_steps[i] != 0) {
        robot->startJog(JogOpt::Space::jointSpace, rate, Utils::radToDeg(abs(jog_steps[i])), i,
-                       (jog_steps[i] > 0 ? true : false), ec);
+                       jog_steps[i] > 0, ec);
        bool running = true;
        while (running) {
          std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -135,7 +149,61 @@ void example_calibrateFrame(Robot_T<Wt, DoF> *robot) {
 }
 
 /**
- * @brief 示例 - 基础的信息查询，计算正逆解
+ * @brief 示例 - 计算正逆解
+ */
+template <WorkType wt, unsigned short dof>
+void example_coordinateCalculation(Robot_T<wt, dof> *robot){
+  error_code ec;
+  auto tcp_xyzabc = robot->posture(CoordinateType::endInRef, ec);
+  // *** 计算逆解 & 正解 ***
+  //设置工具坐标
+  Toolset toolset1;
+  toolset1 = robot->toolset(ec);
+  print(os, "从控制器读取的工具工件坐标系:", toolset1);
+  auto model = robot->model();
+
+  // 当前设置的工具工件坐标系下计算逆解
+  model.calcIk(tcp_xyzabc, ec);
+  // toolset1下计算逆解
+  auto ik = model.calcIk(tcp_xyzabc, toolset1, ec);
+  // 当前设置的工具工件坐标系下计算正解
+  model.calcFk(ik, ec);
+  // toolset1下计算正解
+  auto fk_ret = model.calcFk(ik, toolset1, ec);
+  print(os, "目前的运动学逆解：", ik);
+  print(os, "运动学正解：", fk_ret);
+
+  //*** 坐标系转换： 末端相对于外部参考 & 法兰相对于基坐标 ***
+  //查询基坐标设置
+  auto base_in_world = robot->baseFrame(ec);
+  auto flan_in_base =Utils::EndInRefToFlanInBase(base_in_world, toolset1, tcp_xyzabc);
+  auto flan_pos = robot->posture(CoordinateType::flangeInBase, ec);
+  auto end_in_ref = Utils::FlanInBaseToEndInRef(base_in_world, toolset1, flan_pos);
+
+  print(os, "输入末端相对外部参考坐标系位姿", tcp_xyzabc);
+  print(os, "计算得到的末端相对外部参考坐标系位姿", end_in_ref);
+  print(os, "输入的法兰相对基坐标系位姿", flan_pos);
+  print(os, "计算得到法兰相对基坐标系位姿", flan_in_base);
+
+  // 计算所有逆解示例
+  // 对当前的法兰相对基坐标系进行偏移，计算偏移后位姿的所有逆解
+  auto cart_pos = robot->cartPosture(CoordinateType::flangeInBase, ec);
+  cart_pos.trans[1] += 0.05;
+  cart_pos.rpy[0] += Utils::degToRad(20);
+  std::vector<std::vector<int>> calc_confs;
+  auto ik_solutions = model.calcAllIkSolutions(cart_pos, calc_confs, ec);
+  if(ec) {
+    print(os, "计算逆解失败:", ec);
+  } else {
+    print(os, "计算得到的逆解数量", ik_solutions.size());
+    for(size_t i = 0; i < ik_solutions.size(); ++i) {
+      print(os, " ->", ik_solutions[i], "| conf:", calc_confs[i]);
+    }
+  }
+}
+
+/**
+ * @brief 示例 - 基础的信息查询
  */
 template <WorkType wt, unsigned short dof>
 void example_basicOperation(Robot_T<wt, dof> *robot){
@@ -155,10 +223,25 @@ void example_basicOperation(Robot_T<wt, dof> *robot){
   print(os, "末端相对外部参考坐标系位姿", tcp_xyzabc);
   print(os, "法兰相对基坐标系 -", flan_cart);
 
-  // *** 计算逆解 & 正解 ***
-  auto model = robot->model();
-  auto ik = model.calcIk(tcp_xyzabc, ec);
-  auto fk_ret = model.calcFk(ik, ec);
+#if 0
+  // 设置基坐标系。设置后需要重启工控机生效
+  Frame base_frame_headstand = {0, 0, 0, M_PI, 0, 0}; // 倒装, A = 180°
+  robot->setBaseFrame(base_frame_headstand, ec);
+#endif
+
+  // 查询最近5条错误级别控制器日志
+  print(os, "查询最近5条错误级别控制器日志");
+  auto controller_logs = robot->queryControllerLog(5, {LogInfo::error}, ec);
+  for(const auto &log: controller_logs) {
+    print(os, log.content);
+  }
+
+  // 查询第10-15条所有级别控制器日志
+  print(os, "查询第10-15条所有级别控制器日志");
+  controller_logs = robot->queryControllerLog(5, {LogInfo::error}, ec, 10);
+  for(const auto &log: controller_logs) {
+    print(os, log.content);
+  }
 }
 
 /**
@@ -175,35 +258,6 @@ void example_drag(BaseCobot *robot) {
   while(getchar() != '\n');
   robot->disableDrag(ec);
   std::this_thread::sleep_for(std::chrono::seconds(2)); //等待切换控制模式
-}
-
-/**
- * @brief 示例 - 读写IO, 寄存器
- */
-void example_io_register(BaseRobot *robot) {
-  error_code ec;
-  print(os, "DO1_0当前信号值为:", robot->getDO(1,0,ec));
-  robot->setSimulationMode(true, ec); // 只有在打开输入仿真模式下才可以设置DI
-  robot->setDI(0, 2, true, ec);
-  print(os, "DI0_2当前信号值:", robot->getDI(0, 2, ec));
-  robot->setSimulationMode(false, ec); // 关闭仿真模式
-
-  // 读取单个寄存器，类型为float
-  // 假设"register0"是个寄存器数组, 长度是10
-  float val_f;
-  std::vector<float> val_af;
-  // 读第1个，即状态监控里的register0[1], 读取结果赋值给val_f
-  robot->readRegister("register0", 0, val_f, ec);
-  // 读第10个，即状态监控里的register0[10], 读取结果赋值给val_f
-  robot->readRegister("register0", 9, val_f, ec);
-  // 读整个数组，赋值给val_af, val_af的长度也变为10。此时index参数是多少都无所谓
-  robot->readRegister("register0", 9, val_af, ec);
-
-  // 读取int类型寄存器数组
-  std::vector<int> val_ai;
-  robot->readRegister("register1", 1, val_ai, ec);
-  // 写入bool/bit类型寄存器
-  robot->writeRegister("register2", 0, true, ec);
 }
 
 /**
@@ -245,6 +299,23 @@ void example_avoidSingularityJog(xMateRobot &robot) {
 }
 
 /**
+ * @brief 示例 - NTP设置。注意: NTP功能非标配，需要对机器人进行额外升级
+ */
+void example_ConfigNtp(BaseRobot *robot) {
+  error_code ec;
+  // 设置NTP服务端地址
+  robot->configNtp("192.168.0.170", ec);
+  if(ec) {
+    print(os, "设置NTP服务器地址失败:", ec);
+  }
+  // 同步一次时间
+  robot->syncTimeWithServer(ec);
+  if(ec) {
+    print(os, "同步时间失败:", ec);
+  }
+}
+
+/**
  * @brief 示例 - 打开和关闭碰撞检测
  */
 template <unsigned short dof>
@@ -258,11 +329,86 @@ void example_setCollisionDetection(Cobot<dof> *robot) {
   robot->disableCollisionDetection(ec);
 }
 
+/**
+ * @brief 急停复位
+ */
+void example_emergencyStopReset(BaseRobot *robot) {
+  error_code ec;
+  print(os, "急停复位");
+  robot->recoverState(1, ec);
+  if (ec) {
+    print(os, "复位失败:", ec);
+  } else {
+    print(os, "复位成功");
+  }
+}
+
+/**
+ * @brief 是否使能平行基座模式（协作5轴）
+ */
+void example_CompletePostureLerp(xMateCr5Robot* robot) {
+    error_code ec;
+    print(os, "使能平行基座模式");
+    robot->enableCompletePostureLerp(true, ec); // true: 开启，false: 失败
+    if (ec) {
+        print(os, "开启平行基座模式失败:", ec);
+    }
+    else {
+        print(os, "开启平行基座模式成功");
+    }
+}
+
+/**
+ * @brief 示例 - 设置示教器模式
+ */
+void example_setTpMode(BaseRobot *robot) {
+  error_code ec;
+  // 不带示教器使用
+  robot->setTeachPendantMode(false, ec);
+  if(ec) {
+    print(os, "设置失败:", ec);
+    return;
+  }
+  print(os, "设置不连接示教器成功");
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  // 不连接示教器时，可以手动模式下上电
+  robot->setOperateMode(rokae::OperateMode::manual, ec);
+  robot->setPowerState(true, ec); // could be powered on without teach pendant
+}
+
+/**
+ * @brief 重启/关闭工控机
+ */
+void example_reboot(BaseRobot* robot) {
+  error_code ec;
+  robot->rebootSystem(ec);
+  print(os, "重启工控机");
+  if (ec) print(os, "重启失败:", ec);
+  else print(os, "重启成功");
+
+  // 关闭工控机
+  robot->shutdownSystem(ec);
+  if (ec) print(os, "关机失败:", ec);
+  else print(os, "关机成功");
+}
+
+/**
+ * @brief 示例 - 设置连接断开回调函数
+ */
+void example_setConnectionHandler(BaseRobot *robot) {
+  auto handler = [](bool connected){
+    print(os, "Detect", connected ? "connection" : "disconnection");
+  };
+  robot->setConnectionHandler(handler);
+}
+
+/**
+ * @brief main program
+ */
 int main() {
   try {
     // *** 1. 连接机器人 ***
     std::string ip = "192.168.0.160";
-    std::error_code ec;
     xMateRobot robot(ip);  // 此处连接的是协作6轴机型
 
     // 其它机型
@@ -270,6 +416,7 @@ int main() {
 //    StandardRobot robot; // 连接工业6轴机型
 //    PCB4Robot robot; // 连接PCB4轴机型
 //    PCB3Robot robot; // 连接PCB3轴机型
+//    xMateCr5Robot; // 协作5轴机型
 
     example_basicOperation(&robot);
 

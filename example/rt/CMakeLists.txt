@@ -10,12 +10,13 @@ set(RT_EXAMPLES
     joint_s_line
     cartesian_s_line
     rt_industrial
+    servoj_demo
     )
 
 foreach(example ${RT_EXAMPLES})
     add_executable(${example} ${example}.cpp ${EXAMPLE_HEADERS})
     target_include_directories(${example} PUBLIC
-        ${SHARED_INCLUDEDIR})
+        ${SHARED_INCLUDEDIR} ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(${example} Rokae::Rokae eigen Threads::Threads)
     if(MSVC)
         add_compile_definitions(_USE_MATH_DEFINES)
@@ -27,6 +28,7 @@ if(XCORE_USE_XMATE_MODEL)
     set(EXAMPLES_USE_XMATEMODEL
         torque_control
         follow_joint_position
+        follow_cart_position
         )
     foreach(example ${EXAMPLES_USE_XMATEMODEL})
         add_executable(${example} ${example}.cpp ${EXAMPLE_HEADERS})

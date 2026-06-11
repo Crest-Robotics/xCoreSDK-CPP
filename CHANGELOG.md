@@ -1,6 +1,142 @@
 # CHANGELOG
 
+## v0.7.1 2026-03-03
+
+* 修复
+ * 实时模式关节点位跟随功能优化，处理奇异点问题
+ * 设置工具工件信息(setToolInfo, setWobjInfo) 时旋转角度和负载信息设置错误
+
+## v0.7.0 2026-01-16
+
+* 兼容性
+  * xCore >= v3.2.0
+* 新增
+  * ServoJ功能: setServoJoint(), stopServoJoint(), sendCommand()
+  * 导出控制器备份exportBackup() 和升级 upgrade() 接口
+  * 力控指令: 阻抗力限幅, 阻抗速度限幅, 设置关节力控带宽、摩擦力补偿系数
+  * 计算全部逆解 calcAllIkSolutions()
+  * 关闭工控机 shutdownSystem()
+  * 查询控制器日志增加偏移选项
+  * 读取DH参数 getRobotCfg_DHparam()
+* 优化
+  * 隔离内部引入的spdlog, 避免冲突
+  * 实时模式运动延迟问题，增大超时时间上限到20ms
+* 修复
+  * 末端工具指令兼容新旧固件
+
+## v0.6.0 2025-07-08
+
+* 兼容性
+  * xCore >= v3.1.0
+* 新增
+  * 通过SDK操作RL工程文件
+    * 传输RL工程importProject()，传输单个工程文件importFile()
+    * 删除工程 removeProject()，删除文件removeFiles()
+  * 设置工具工件信息setToolInfo(), setWobjInfo()
+  * 设置示教器热插拔setTeachPendantMode()
+  * 重启工控机rebootSystem()
+  * 设置SDK连接/断开回调函数setConnectionHandler()
+  * 获取机器人基本信息(robotInfo)增加MAC地址
+  * 设置是否自动忽略转弯区函数setAutoIgnoreZone()
+  * 事件监控增加控制器日志 Event::logReporter
+  * 优化xMate模型库动力学参数获取，修复getTorqueNoFriction()计算问题
+  * 模型库支持XMS5机型（注意:需要升级特殊版本的机型文件）
+  * 实时模型控制类增加hasMotionError()
+* 修复
+  * 非实时运动指令缓存上限放宽到1000，以满足高速短轨迹场景
+  * 实时模式MoveL的起点和终点的笛卡尔空间距离小于1e-6时，函数会阻塞的问题
+  * 重连机器人后，恢复监听事件
+  * 修正实时模式错误位的报错信息
+* 移除
+  * xMate模型库不支持XMC18和XMC20机型
+  * 删除模型库计算力矩函数getTorque()和getTorqueWithFriction()
+
+## v0.5.1 2025-04-25
+
+* 兼容性
+  * xCore >= v3.0.2
+* 新增
+  * 运动指令的速度speed和转弯区zone数据类型改为double
+  * TCP连接断开增加日志，日志路径为执行目录下logs；正逆解计算增加日志
+* 修复
+  * 点位跟随功能用的关节限位和控制器设置的限位不一致问题
+  * 网络连接断开后，运动事件监听无法恢复的问题，通过connectToRobot或setEventWatcher可再次设置监听
+  * 查询工程工具工件崩溃问题
+  * 版本号向下兼容
+  * moveReset重置指令技术，避免由于网络不稳定引起的计数错误问题
+
+## v0.5.0 2024-12-31
+
+* 兼容性
+  * xCore >= v3.0.1
+* 新增
+  * 支持控制导轨
+    * 带导轨的联动运动；
+    * 读写导轨参数 setRailParameter(), getRailParameter()
+    * 导轨Jog
+  * 笛卡尔空间运动指令可达性校验 checkPath()
+  * XMS, XMC机型末端485通信相关 setxPanelRS485(), XPRWModbusRTUReg(), XPRWModbusRTUCoil()
+  * 实时模式执行回调函数时，读取数据的超时等待时间可设置
+  * 运动停留指令MoveWait，运动指令自定义信息
+  * RL工程执行状态事件通知
+  * 给定工具工件坐标系下的正逆解计算
+  * 无末端按键拖动
+* 修复
+  * 工业六轴机型本机地址设置问题
+
+## v0.4.1.b 2024-09-03
+
+* 修复
+  * 进入协作模式后机器人状态错误问题
+* 新增
+  * 写寄存器数组
+
+## v0.4.1.a 2024-08-16
+
+* 修复
+  * 移除Linux平台对std::filesystem的依赖
+
+## v0.4.1 2024-07-02
+
+* 兼容性
+  * xCore >= v2.2.1, 部分新增特性需要xCore >= v2.2.2
+* 新增
+  * 运动指令速度细化，增加关节速度百分比jointSpeed 和空间旋转速度rotSpeed (需要xCore版本v2.2.2)
+  * 增加三个实时状态数据
+  * 急停复位接口recoverState()
+  * SDK日志可通过本地文件配置
+* 修复 (需要xCore版本v2.2.2)
+  * Jog步长在示教器显示的问题
+  * 运动缓存错误码没有传出的问题
+  * 碰撞检测负载设置问题
+
+## v0.4.0 2024-04-15
+
+* 兼容性
+  * xCore >= v2.2
+* 新增
+  * 支持CR5轴机型
+  * 所有非实时力控指令
+  * 力矩传感器标定calibrateForceSensor()
+  * SDK执行日志
+  * 加速度读写接口getAcceleration(), adjustAcceleration()
+  * 末端按键读取 getKeypadState()
+  * 设置基坐标系 setBaseFrame()
+  * 打开关闭三种奇异规避方式
+  * 其它新增: MoveSP指令增加偏移项; 全圆指令增加旋转类型, 等
+* 修复
+  * 非实时接口多线程阻塞问题
+  * 实时模式不能控制多台机器人问题
+  * UDP端口设置导致的状态数据接收问题
+  * 其它已知问题
+* 变更
+  * 使用协作CR和SR机型，并且程序中MoveJCommand用到了confData，需要在程序中加 setDefaultConfOpt(true), 让confData生效;
+  * 错误码和异常信息语言根据用户PC系统语言设置而定，中文返回中文信息，非中文返回英文信息;
+  * 拖动回放replayPath()，由调用完立即开始运动，改为需要moveStart()才开始运动，并且可以和其它运动指令一起下发;
+  * 通过setToolset()函数设置的工具工件组，优化为右上角的工具工件显示"toolx", "wobjx"，并且状态监控里看到的位姿会同步更新。
+
 ## v0.3.4 2023-11-02
+
 * 兼容性  
   * xCore >= v2.1.0.15 (三位发布号v2.1.0)
   * 增加支持aarch64-linux-gnu (gcc version 7.5.0)
@@ -10,7 +146,7 @@
   * 读取设置软限位接口getSoftLimit(), setSoftLimit()
   * 协作机器人读取末端力矩接口getEndTorque()
   * 碰撞检测触发行为增加柔顺停止(StopLevel::suppleStop)和柔顺度选项
-  * xMateCR和xMateSR机型奇异规避相关接口: 奇异规避&平行基座Jog，设置奇异规避模式运动setAvoidSingularity(), 
+  * xMateCR和xMateSR机型奇异规避相关接口: 奇异规避&平行基座Jog，设置奇异规避模式运动setAvoidSingularity()
   * 非实时运动信息反馈增加点位距离过近的报警信息(EventInfoKey::MoveExecution::Remark)
   * 工具/工件/基坐标系标定接口calibrateFrame()
   * 螺旋线运动指令MoveSPCommand
@@ -27,6 +163,7 @@
   * 其它已知问题
 
 ## v0.3.3 2023-08-23
+
 * 兼容性
   * 增加Linux下不依赖模型库的xCoreSDK.so, 可用于编译动态库
 * 修复&优化
@@ -35,6 +172,7 @@
   * RL工程相关接口没有检查模式的问题
 
 ## v0.3.2 2023-07-04
+
 * 兼容性
   * xCore >= v2.0.1
   * xMateModel模型库支持Linux x86_64; 及Windows Release编译类型
@@ -45,6 +183,7 @@
   * 实时模式急停后恢复运动的问题; 及其它已知问题
 
 ## v0.3.1 2023-05-03
+
 * 兼容性
   * xCore >= v2.0.0.7
   * 增加动态库；xMateModel及相关接口除外，仅支持Linux静态库
@@ -54,6 +193,7 @@
   * 增加全局调整运动速率接口adjustSpeedOnline()
 
 ## v0.3.0 2023-03-07
+
 * 兼容性
   * xCore >= v2.0.0.1
 * 新增&优化
@@ -68,115 +208,12 @@
   * loadProject()加载工程增加工程是否存在的检查
 
 ## v0.2.8 2023-02-15
+
+
 * 新增&优化
   * 合并CartesianPosition & CartesianPose
   * 删除append()&executeCommands()
   * 增加FollowPosition目标跟随
   * xMateModel增加适配CR&SR机型
 
-## v0.2.7 2023-02-01
-* 新增&优化
-  * 实时模式状态数据改为同步接收；读取接口统一为getStateData(); 增加updateRobotState()更新状态数据
-  * 去掉接收数据以及周期调度的间隔参数，统一为间隔为1ms
-
-## v0.2.6 2023-01-12
-* 修复
-  * 调用append()发送多条运动指令后自动开始执行的问题，修改回发送后立即开始执行。append()和executeCommands()接口弃用。
-  * 没有处理网络断开、解析回复失败等发生错误时抛出的异常
-* 新增&优化
-  * executeCommand(), 接口功能与v0.2.0之前版本的append()一样
-  * 删除data_types.h中数据结构getter&setter
-  * CartesianPosition类增加臂角值"elbow"
-  * 删除xMateModel库getJointPosWithConf()接口
-  * Debug版本加一点错误打印
-  
-## v0.2.5 2023-01-09
-* 兼容性
-  * 增加MSVC Debug版本库
-* 新增
-  * 实时模式上位机规划MoveC指令
-  
-## v0.2.4 2023-01-05
-* 兼容性
-  * xCore版本 >= v1.7.0.9 (影响与原版RCI客户端切换使用问题)
-* 修复
-  * 实时模式运动异常无法回传到主线程的问题
-  * 一些接口的数据设置返回结果没有赋给错误码
-* 新增
-  * 查询控制器日志
-  * 切换回原版RCI客户端的接口
-  * 数据转换工具类
-
-## v0.2.3 2022-12-27
-* 兼容性
-  * xCore版本 >= v1.7.0.7 (仅影响运动RL工程的速率设置)
-* 新增
-  * 加载、运行、暂停运行RL工程相关函数
-  * jog机器人
-  * 读写模拟量信号，读写寄存器
-
-## v0.2.2 2022-12-19
-* 兼容性
-  * xCore版本 >= v1.7.0.6 (仅影响RCI模式下打开关闭拖动)
-* 新增
-  * 实时MoveL & MoveJ运动指令
-  * 连接机器人时检查工业/协作类型
-* 修复
-  * RCI模式下打开/关闭拖动没有调用RCI对应方法的问题
-
-## v0.2.1 2022-12-09
-* 新增
-  * 断开/重新连接到RCI服务器接口
-  * 设置丢包阈值接口，微调整控制器内计算丢包率方法
-  * 等待接收控制器发送的实时状态信息超时时间为3秒
-
-## v0.2.0 2022-12-07
-* 兼容性
-  * xCore版本 >= v1.7.0.5
-* 新增
-  * RCI实时控制，关节/笛卡尔位置/阻抗控制
-  * xMateModel模型库，只支持Linux系统
-  * 非实时运动指令增加executeCommands(),将发送运动指令到缓存和开始运动分离，调用append()后机器人不再直接开始运动
-* 修复
-  * append()单条指令转弯区不生效的问题(和第3条新增描述的内容相关)
-  * 优化append()多条指令默认只用第一条指令的转弯区和速度设置的问题。每个单独设置了转弯区或速度的指令都生效。
-
-## v0.1.5 2022-11-07
-* 修复
-  * 缺少头文件导致的编译问题
-
-## v0.1.4 2022-10-24
-* 修复
-  * 由于轴配置数据默认为0而导致的计算逆解错误问题。同时修改正逆解函数参数和返回值，带上轴配置数据
-
-## v0.1.3 2022-10-19
-* 兼容性
-  * 编译器
-    * MSVC 14.1+ (Visual Studio 2017 version 15.0)
-* 修复
-  * dll导入导出属性导致的静态库链接问题
-  * 断开机器人连接或Robot对象被析构时，仅当机器人在执行SDK发送的运动指令时才停止运动
-
-## v0.1.2 2022-10-17
-* 新增
-  * 下发运动指令接口append()增加vector类型作为参数
-  
-## v0.1.1 2022-10-11
-* 兼容性
-  * xCore版本 >= V1.6.2
-* 新增
-  * 路径录制与回放相关接口，及示例程序
-* 修复
-  * 直接调用关闭拖动接口会报错
-  * 机器人处于摩擦力/动力学辨识等状态时，查询状态返回信息不准确
-
-## v0.1.0 2022-09-23
-* 兼容性
-  * xCore版本 >= V1.6.1
-  * 开发语言: C++
-  * 操作系统及编译器
-    * Windows10 - MSVC 14.2+ (Visual Studio 2019 version 16.0)
-    * Ubuntu 18.04+
-* 新增
-  * 机器人基本操作, 包括上下电，切换模式，查询状态位姿，DI/DO设置，打开关闭拖动等
-  * 非实时运动控制，使用控制器内部路径规划完成MoveJ/MoveL/MoveAbsJ/MoveC运动指令
+本文档移除了更早的历史版本的变更记录

@@ -1,8 +1,10 @@
 ﻿/**
  * @file move_commands.cpp
  * @brief 实时模式 - S规划MoveJ & MoveL & MoveC
+ * @attention 实时模式的MoveJ/MoveL/MoveC已不建议使用，请使用非实时模式下的MoveAbsJCommand/MoveLCommand/MoveCCommand。
+ * 本示例仅作调用方法展示
  *
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -16,6 +18,9 @@
 
 using namespace rokae;
 
+/**
+ * @brief main program
+ */
 int main() {
   using namespace std;
   try {

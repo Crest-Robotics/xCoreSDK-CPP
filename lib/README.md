@@ -1,46 +1,89 @@
-# SDK 库文件 / SDK Libraries
+# 预编译库 / Prebuilt Libraries
 
-本仓库不再托管预编译库文件（已从 Git LFS 移除以节省存储配额）。
+本仓库**不包含**预编译库文件。库文件通过 GitHub Releases 按平台分发，请打开与 SDK 版本对应的 Release 页面下载。
 
-This repository no longer hosts prebuilt library files (removed from Git LFS to save storage quota).
+This repository does **not** include prebuilt library files. Libraries are distributed per platform via GitHub Releases — use the Release page matching your SDK version.
 
-## 获取库文件 / Obtaining Libraries
+**Release 链接 / Release URL（版本号见根目录 `CMakeLists.txt`）：**
 
-请从珞石官方渠道获取与 SDK 版本匹配的预编译库，并按以下目录结构放置：
+`https://github.com/RokaeRobot/xCoreSDK-CPP/releases/tag/v{VERSION}`
 
-Obtain prebuilt libraries matching the SDK version from ROKAE official channels and place them in the following directory structure:
+例如当前 v0.7.1：[Release v0.7.1](https://github.com/RokaeRobot/xCoreSDK-CPP/releases/tag/v0.7.1)
 
-### Linux
+## 获取步骤 / How to Obtain
 
-```
-lib/Linux/cpp/x86_64/
-  libxCoreSDK.a
-  libxCoreSDK.so.<version>
-  libxCoreSDK.nomodel.so.<version>   # when XCORE_USE_XMATE_MODEL=OFF
-  libxMateModel.a                    # when XCORE_USE_XMATE_MODEL=ON
+1. 克隆本仓库 / Clone this repository
+2. 打开与 SDK 版本一致的 [Release 页面](https://github.com/RokaeRobot/xCoreSDK-CPP/releases/tag/v0.7.1)（链接规则见上文；运行 `cmake` 时若缺库也会打印对应版本的直达链接）
+3. 下载对应平台的库文件包 / Download the package for your platform
+4. 在**仓库根目录**解压，使文件落入 `lib/` 目录 / Extract at the **repository root** so files land under `lib/`
 
-lib/Linux/cpp/aarch64/
-  libxCoreSDK.a
-  libxCoreSDK.so.<version>
-```
+### Release 包命名 / Package Names
+
+| 包名 / Package | 适用场景 / Use case |
+|---|---|
+| `xCoreSDK-{version}-win64-release.zip` | Windows 64-bit Release 编译 |
+| `xCoreSDK-{version}-win64-debug.zip` | Windows 64-bit Debug 编译（含 pdb） |
+| `xCoreSDK-{version}-win32-release.zip` | Windows 32-bit Release 编译 |
+| `xCoreSDK-{version}-win32-debug.zip` | Windows 32-bit Debug 编译（含 pdb） |
+| `xCoreSDK-{version}-linux-x86_64.tar.gz` | Linux x86_64 |
+| `xCoreSDK-{version}-linux-aarch64.tar.gz` | Linux aarch64 |
+
+> 一般 Release 编译只需下载 `-release` 包；Debug 调试时再额外下载 `-debug` 包。
+>
+> For Release builds, download the `-release` package only. Download `-debug` when you need Debug symbols.
+
+## 解压后目录结构 / Expected Layout
 
 ### Windows
 
 ```
-lib/Windows/cpp/Debug/<32bit|64bit>/
+lib/Windows/Release/64bit/
+  xCoreSDK.dll
+  xCoreSDK.lib
+  xCoreSDK_static.lib
+  xCoreSDK_Upgrade.dll
+  xCoreSDK_Upgrade.lib
+  xCoreSDK_Upgrade_static.lib
+  xMateModel.lib              # 64-bit Release only
+
+lib/Windows/Debug/64bit/
   xCoreSDK.dll
   xCoreSDK.lib
   xCoreSDK_static.lib
   xCoreSDK.pdb
-  xMateModeld.lib                    # Debug, 64bit only
-
-lib/Windows/cpp/Release/<32bit|64bit>/
-  xCoreSDK.dll
-  xCoreSDK.lib
-  xCoreSDK_static.lib
-  xMateModel.lib                     # Release, 64bit only
+  xCoreSDK_Upgrade.dll
+  xCoreSDK_Upgrade.lib
+  xCoreSDK_Upgrade_static.lib
+  xMateModeld.lib             # 64-bit Debug only
 ```
 
-如有疑问请联系珞石客户支持。
+32-bit 路径将 `64bit` 换为 `32bit`，且无 xMateModel 库。
 
-For questions, please contact ROKAE customer support.
+### Linux
+
+```
+lib/Linux/x86_64/
+  libxCoreSDK.so.{version}
+  libxCoreSDK.a
+  libxMateModel.a
+  libxCoreSDK_Upgrade.so.0.1
+  libxCoreSDK_Upgrade.a
+
+lib/Linux/aarch64/
+  libxCoreSDK.so.{version}
+  libxCoreSDK.a
+  libxCoreSDK_Upgrade.so.0.1
+  libxCoreSDK_Upgrade.a
+```
+
+## 验证 / Verify
+
+解压完成后，在仓库根目录执行 CMake 配置。若库文件缺失，CMake 会给出警告并提示下载地址。
+
+After extraction, run CMake configure at the repository root. CMake will warn if libraries are missing.
+
+## 发版说明（维护者） / Release Notes (Maintainers)
+
+库文件打包与发布流程见 [scripts/RELEASE.md](../scripts/RELEASE.md)。
+
+See [scripts/RELEASE.md](../scripts/RELEASE.md) for packaging and publishing instructions.

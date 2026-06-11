@@ -3,7 +3,7 @@
  * @brief 实时模式 - 直接力矩控制
  * 此示例需要使用xMateModel模型库，请设置编译选项XCORE_USE_XMATE_MODEL=ON
  *
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -15,6 +15,7 @@
 #include "Eigen/Geometry"
 #include "../print_helper.hpp"
 #include "rokae/utility.h"
+#include "../function_helper.hpp"
 
 using namespace rokae;
 
@@ -28,14 +29,10 @@ void torqueControl(xMateErProRobot &robot) {
   auto rtCon = robot.getRtMotionController().lock();
   auto model = robot.model();
   error_code ec;
-  std::array<double,7> q_drag = {0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0 };
 
   robot.stopReceiveRobotState();
   robot.startReceiveRobotState(std::chrono::milliseconds(1),
                                {jointPos_m, jointVel_m, jointAcc_c, tcpPose_m});
-
-  // 运动到拖拽位置
-  rtCon->MoveJ(0.2, robot.jointPos(ec), q_drag);
 
   // 控制模式为力矩控制
   rtCon->startMove(RtControllerMode::torque);
@@ -74,12 +71,8 @@ void torqueControl(xMateErProRobot &robot) {
     robot.getStateData(jointAcc_c, ddq_c);
 
     std::array<double, 42> jacobian_array = model.jacobian(q);
-    std::array<double, 7> gravity_array = model.getTorque(q, dq_m, ddq_c, TorqueType::gravity);
-    std::array<double, 7> friction_array = model.getTorque(q, dq_m, ddq_c, TorqueType::friction);
 
     // convert to Eigen
-    Eigen::Map<const Eigen::Matrix<double, 7, 1>> gravity(gravity_array.data());
-    Eigen::Map<const Eigen::Matrix<double, 7, 1>> friction(friction_array.data());
     Eigen::Map<const Eigen::Matrix<double, 7, 6>> jacobian_(jacobian_array.data());
     jacobian = jacobian_.transpose();
     Eigen::Map<const Eigen::Matrix<double, 7, 1>> q_mat(q.data());
@@ -132,11 +125,7 @@ void torqueControl(xMateErProRobot &robot) {
 template <unsigned short DoF>
 void zeroTorque(Cobot<DoF> &robot) {
   error_code ec;
-  std::array<double,7> q_drag = {0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0 };
   auto rtCon = robot.getRtMotionController().lock();
-
-  // 运动到拖拽位置
-  rtCon->MoveJ(0.2, robot.jointPos(ec), q_drag);
 
   // 控制模式为力矩控制
   rtCon->startMove(RtControllerMode::torque);
@@ -157,24 +146,45 @@ void zeroTorque(Cobot<DoF> &robot) {
   print(std::cout, "力矩控制结束");
 }
 
+/**
+ * @brief main program
+ */
 int main() {
   try {
     std::string ip = "192.168.0.160";
     std::error_code ec;
     rokae::xMateErProRobot robot(ip, "192.168.0.100"); // ****   xMate 7-axis
-    robot.setOperateMode(rokae::OperateMode::automatic, ec);
-    robot.setMotionControlMode(MotionControlMode::RtCommand, ec);
+
+    robot.setMotionControlMode(rokae::MotionControlMode::NrtCommand, ec);
+    if(ec) {
+      std::cerr << "Set motion control mode failed " << ec.message() << std::endl;
+      return 0;
+    }
+    // 上电
+    robot.setOperateMode(rokae::OperateMode::automatic,  ec);
     robot.setPowerState(true, ec);
+    // 先运动到起始位置, xMate Pro机型的拖拽位姿
+    MoveAbsJCommand start_joint({0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0}, 200, 0);
+    std::string id;
+    robot.moveAppend(start_joint, id, ec);
+    robot.moveStart(ec);
+    helper::waitRobot(robot);
+
+    // 切换到实时模式控制
+    robot.setMotionControlMode(MotionControlMode::RtCommand, ec);
+    robot.setOperateMode(rokae::OperateMode::automatic, ec);
+    robot.setPowerState(true, ec);
+
     try {
       torqueControl(robot);
     } catch (const rokae::RealtimeMotionException &e) {
+      // 发生错误
       print(std::cerr, e.what());
-      // 发生错误, 切换回非实时模式
-      robot.setMotionControlMode(rokae::MotionControlMode::NrtCommand, ec);
     }
 
     robot.setMotionControlMode(rokae::MotionControlMode::NrtCommand, ec);
     robot.setOperateMode(rokae::OperateMode::manual, ec);
+    robot.setPowerState(false, ec);
 
   } catch (const std::exception &e) {
     print(std::cerr, e.what());

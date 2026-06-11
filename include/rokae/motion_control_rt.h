@@ -1,7 +1,7 @@
 ﻿/**
  * @file motion_control_rt.h
  * @brief 实时模式运动控制
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -19,6 +19,7 @@
 
 namespace rokae {
 
+ /// @cond DO_NOT_DOCUMENT
  // forward declaration
  class XService;
  class DataReceiver;
@@ -26,6 +27,7 @@ namespace rokae {
  class MotionControl;
  template <unsigned short DoF>
  class xMateModel;
+ /// @endcond
 
 /**
  * @class BaseMotionControl
@@ -54,7 +56,7 @@ namespace rokae {
     * @brief constructor
     * @throw NetworkException 网络连接错误
     */
-   MotionControl(std::shared_ptr<XService> sdkRpc, XService *_rtRpc, DataReceiver *recv);
+   MotionControl(std::shared_ptr<XService> sdkRpc, XService *_rtRpc, DataReceiver *recv, const std::string &localIp);
    virtual ~MotionControl() noexcept;
 
    // *********************************************************************
@@ -113,6 +115,21 @@ namespace rokae {
     */
    void stopMove();
 
+   /**
+    * @brief 发送JointPosition/CartesianPosition/Torque命令。适用于不使用调度周期，程序直接发送命令。
+    * @note 开始运动后，持续调用此函数发送运动命令。由于控制器执行命令的周期为1ms，发送命令的间隔也需要控制在1ms，
+    * 如果发送间隔过长会判断为通信丢包，间隔过短会造成伺服报错。
+    * 直接发送命令的话就不需要用调度周期了，setControlLoop(), startLoop(), stopLoop()等相关函数都不需要。
+    * 实时运动报错可通过BaseRobot::updateRobotState()获知，有报错会抛出异常；
+    * 需要调用Robot_T::startReceiveRobotState()接收数据，建议间隔为1ms，避免报错信息被覆盖
+    * @param[in] cmd 根据控制模式(RtControllerMode)不同，有3种运动命令: 关节角度/笛卡尔位姿/力矩
+    * @throw ArgumentException 指令数值存在非法值
+    * @throw RealtimeStateException 未开始运动
+    * @throw RealtimeControlException 命令发送网络异常; 或命令类型与控制模式不匹配; 或控制器执行已发送命令时发生错误
+    */
+   template<class Command>
+   void sendCommand(const Command &cmd);
+
    // *********************************************************************
    // *****************        获取机器人实时状态数据        ******************
 
@@ -155,16 +172,40 @@ namespace rokae {
    [[deprecated("Use BaseRobot::getStateData(fieldName, data) instead")]]
    int getStateData(const std::string &fieldName, R &data);
 
+   // *******************          ServoJ相关          *********************
+
+   /**
+    * @brief 通过实时模式sendCommand下发关节位置，开放调用周期、增益和前瞻时间的设置，且开启servoJ功能
+    * @param[in] ServoJ_T 下发关节位置时调用servoJ的周期, 单位s
+    * @param[in] ServoJ_Lookahead 前瞻时间，对下发关节位置后运动速度的限制, 单位s
+    * @param[in] ServoJ_Kp 控制增益
+    * @param[out] ec 错误码
+    */
+   void setServoJoint(double ServoJ_T, double ServoJ_Lookahead, double ServoJ_Kp, error_code &ec) noexcept;
+
+   /**
+    * @brief 关闭servoJ功能，停止使用setServoJoint需要进行关闭
+    */
+   void stopServoJoint() noexcept;
+
    // *********************************************************************
    // ********************          其他操作            *********************
+
+   /**
+    * @brief 实时模式运动是否发生了运动错误
+    * @return true - 有报错
+    */
+   bool hasMotionError() noexcept;
+
    /**
     * @brief 当错误发生后，自动恢复机器人。
     * @param[out] ec 错误码
     */
-   [[deprecated("no longer maintained function")]]
    void automaticErrorRecovery(error_code &ec) noexcept;
 
+   /// @cond DO_NOT_DOCUMENT
   XCORESDK_DECLARE_IMPLD
+  /// @endcond
  };
 
  /**
@@ -179,7 +220,7 @@ namespace rokae {
     * @brief constructor
     * @throw NetworkException 网络连接错误
     */
-   RtMotionControl(std::shared_ptr<XService> sdkRpc, XService *rtRpc, DataReceiver *recv);
+   RtMotionControl(std::shared_ptr<XService> sdkRpc, XService *rtRpc, DataReceiver *recv, const std::string &localIp);
 
    // **********************************************************************
    // ***************           控制模式 & 发送运动指令          ***************
@@ -216,7 +257,6 @@ namespace rokae {
     */
    void setCartesianLimit(const std::array<double, 3> &lengths, const std::array<double, 16> &frame, error_code &ec) noexcept;
 
-
    /**
     * @brief 设置末端执行器相对于机器人法兰的位姿，设置TCP后控制器会保存配置，机器人重启后恢复默认设置。
     * @param[in] frame 末端执行器坐标系相对于法兰坐标系的齐次矩阵，单位: rad, m
@@ -236,6 +276,7 @@ namespace rokae {
 
    /**
     * @brief MoveJ指令，上位机规划路径，在到达target之前处于处于阻塞状态。如果运动中发生错误将停止阻塞状态并返回。
+    * @note 已不建议使用，请使用非实时模式指令MoveAbsJCommand。
     * @param[in] speed 速度比例系数
     * @param[in] start 起始关节角度，需要是机器人当前关节角度，否则可能造成下电。
     * @param[in] target 机器人目标关节角度
@@ -245,6 +286,7 @@ namespace rokae {
 
    /**
     * @brief MoveL指令，上位机规划路径，在到达target之前处于处于阻塞状态。如果运动中发生错误将停止阻塞状态并返回。
+    * @note 已不建议使用，请使用非实时模式指令MoveLCommand。
     * @param[in] speed 速度比例系数, 范围 0 - 1
     * @param[in] start 起始位姿, 需要是机器人当前位姿，否则可能造成下电。如果设置了TCP，那么应该是工具相对于基坐标系的位姿。
     * @param[in] target 机器人目标位姿。同理如果设置了TCP，应是TCP相对于基坐标系的位姿
@@ -255,6 +297,7 @@ namespace rokae {
 
    /**
     * @brief MoveC指令，在到达target之前处于阻塞状态。如果运动中发生错误将停止阻塞状态并返回。
+    * @note 已不建议使用，请使用非实时模式指令MoveCCommand。
     * @param[in] speed 速度比例系数
     * @param[in] start 机器人起始位姿, 需要是机器人当前位姿。如果设置了TCP，那么应该是工具相对于基坐标系的位姿。
     * @param[in] aux 机器人辅助点位姿。同理如果设置了TCP，应是TCP相对于基坐标系的位姿
@@ -283,7 +326,8 @@ namespace rokae {
     * @brief 设置轴空间阻抗控制系数，轴空间阻抗运动时生效
     * @param[in] factor 轴空间阻抗系数，单位: Nm/rad
     * xMateErPro机型最大刚度为 { 3000, 3000, 3000, 3000, 300, 300, 300 }
-    * 其他机型最大刚度为 { 3000, 3000, 3000, 300, 300, 300 }
+    * 六轴机型最大刚度为 { 3000, 3000, 3000, 300, 300, 300 }
+    * 五轴机型最大刚度为 { 3000, 3000, 3000, 300, 300 }
     * 实际有效的最大值和传感器等硬件状态有关系，如发生抖动等现象，请尝试减小阻抗系数。
     * @param[out] ec 错误码
     */
@@ -291,7 +335,8 @@ namespace rokae {
 
    /**
     * @brief 设置笛卡尔空间阻抗控制系数, 笛卡尔阻抗运动时生效
-    * @param[in] factor 阻抗系数[ X, Y, Z, Rx, Ry, Rz], 最大值为 { 1500, 1500, 1500, 100, 100, 100 }, 单位: N/m, Nm/rad
+    * @param[in] factor 阻抗系数[ X, Y, Z, Rx, Ry, Rz], 最大值为 { 3000, 3000, 3000, 300, 300, 300 }, 单位: N/m, Nm/rad
+    * 实际有效的最大值和传感器等硬件状态有关系，如发生抖动等现象，请尝试减小阻抗系数。
     * @param[out] ec 错误码
     */
    void setCartesianImpedance(const std::array<double, 6> &factor, error_code &ec) noexcept;
@@ -333,9 +378,10 @@ namespace rokae {
    /**
     * @brief 设置碰撞检测阈值。
     * 碰撞检测只在位置控制时生效，力控时不生效。若检测到碰撞，控制器会下发下电指令，电机抱闸吸合下使能。
-    * @param[in] torqueThresholds 关节碰撞检测阈值。
+    * @param[in] torqueThresholds 关节碰撞检测阈值, 单位N。
     * xMateErPro机型最大值为 { 75, 75, 60, 45, 30, 30, 20 }，
     * 其他机型最大值为{ 75, 75, 45, 30, 30, 20 }
+    * 5轴机型最大值为{ 75, 75, 45, 30, 20 }
     * @param[out] ec 错误码
     */
    void setCollisionBehaviour(const std::array<double, DoF> &torqueThresholds, error_code &ec) noexcept;

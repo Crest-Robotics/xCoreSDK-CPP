@@ -11,7 +11,7 @@ find_package(Doxygen 1.9.4)
 message(STATUS "Can build doc?                            ${DOXYGEN_FOUND}")
 if(DOXYGEN_FOUND)
 
-    set(DOXYGEN_EXAMPLE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../example/cpp)
+    set(DOXYGEN_EXAMPLE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../example)
     set(DOXYGEN_INPUT_FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include)
     path_win_to_linux(${CMAKE_CURRENT_SOURCE_DIR} CMAKE_CURRENT_SOURCE_DIR_LINUX)
     path_win_to_linux(${PROJECT_SOURCE_DIR} PROJECT_SOURCE_DIR_LINUX)

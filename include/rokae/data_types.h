@@ -1,7 +1,7 @@
 ﻿/**
  * @file data_types.h
  * @brief 定义数据结构和枚举类
- * @copyright Copyright (C) 2023 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
+ * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
@@ -17,6 +17,7 @@
 #include <vector>
 #include <string>
 #include <any>
+#include <unordered_map>
 #include "base.h"
 
 namespace rokae {
@@ -115,29 +116,36 @@ namespace rokae {
   /// ArrayXD = std::array<double, DoF> , DoF为轴数
   /// Array6D = std::array<double, 6>, 以此类型
   constexpr const char *jointPos_m = "q_m";   ///< 关节角度 [rad] - ArrayXD
-  constexpr const char *jointPos_c = "q_c";   ///< 指令关节角度 [rad] - ArrayXD
+  constexpr const char *jointPos_c = "q_c";   ///< 指令关节角度 [rad] - ArrayXD。仅在打开实时模式控制之后数据有效。
   constexpr const char *jointVel_m = "dq_m";  ///< 关节速度 [rad/s]- ArrayXD
-  constexpr const char *jointVel_c = "dq_c";  ///< 指令关节速度 [rad/s] - ArrayXD
-  constexpr const char *jointAcc_c = "ddq_c"; ///< 指令关节加速度 [rad/s^2] - ArrayXD
+  constexpr const char *jointVel_c = "dq_c";  ///< 指令关节速度 [rad/s] - ArrayXD。仅在打开实时模式控制之后数据有效。
+  constexpr const char *jointAcc_m = "ddq_m"; ///< 关节加速度 [rad/s^2] - ArrayXD。仅在打开实时模式控制之后数据有效。
+  constexpr const char *jointAcc_c = "ddq_c"; ///< 指令关节加速度 [rad/s^2] - ArrayXD。仅在打开实时模式控制之后数据有效。
   constexpr const char *tcpPose_m  = "pos_m"; ///< 末端位姿, 相对于基坐标系, 行优先齐次变换矩阵 - Array16D
   constexpr const char *tcpPoseAbc_m = "pos_abc_m"; ///< 末端位姿, 相对于基坐标系 [X,Y,Z,Rx,Ry,Rz] - Array6D
-  constexpr const char *tcpPose_c  = "pos_c"; ///< 发送的末端位姿指令, 相对于基坐标系, 行优先齐次变换矩阵 - Array16D
-  constexpr const char *tcpVel_c   = "pos_vel_c"; ///< 指令机器人末端速度 - Array6D
-  constexpr const char *tcpAcc_c   = "pos_acc_c"; ///< 指令机器人末端加速度 - Array6D
+  constexpr const char *tcpPose_c  = "pos_c"; ///< 发送的末端位姿指令, 相对于基坐标系, 行优先齐次变换矩阵 - Array16D。仅在打开实时模式控制之后数据有效。
+  constexpr const char *tcpVel_m   = "pos_vel_m"; ///< 机器人末端速度 - Array6D。仅在打开实时模式控制之后数据有效。
+  constexpr const char *tcpVel_c   = "pos_vel_c"; ///< 指令机器人末端速度 - Array6D。仅在打开实时模式控制之后数据有效。
+  constexpr const char *tcpAcc_m   = "pos_acc_m"; ///< 机器人末端加速度 - Array6D。仅在打开实时模式控制之后数据有效。
+  constexpr const char *tcpAcc_c   = "pos_acc_c"; ///< 指令机器人末端加速度 - Array6D。仅在打开实时模式控制之后数据有效。
+  constexpr const char *exJointPos_m = "ex_q_m"; ///< 外部轴数值 [rad] 导轨[m] - Array6D 实际有效数据个数为外部轴数
+  constexpr const char *exJointVel_m = "ex_dq_m"; ///< 外部轴速度 [rad/s] 导轨[m/s] - Array6D 实际有效数据个数为外部轴数
+  constexpr const char *exMotor_m = "ex_motor_m"; ///< 外部轴电机位置 - Array6D 实际有效数据个数为外部轴数
   constexpr const char *elbow_m    = "psi_m";     ///< 臂角 [rad] - double
-  constexpr const char *elbow_c    = "psi_c";     ///< 指令臂角 [rad] - double
-  constexpr const char *elbowVel_c = "psi_vel_c"; ///< 指令臂角速度 [rad/s] - double
-  constexpr const char *elbowAcc_c = "psi_acc_c"; ///< 指令臂角加速度 [rad/s] - double
+  constexpr const char *elbow_c    = "psi_c";     ///< 指令臂角 [rad] - double。仅在打开实时模式控制之后数据有效。
+  constexpr const char *elbowVel_c = "psi_vel_c"; ///< 指令臂角速度 [rad/s] - double。仅在打开实时模式控制之后数据有效。
+  constexpr const char *elbowAcc_c = "psi_acc_c"; ///< 指令臂角加速度 [rad/s] - double。仅在打开实时模式控制之后数据有效。
   constexpr const char *tau_m      = "tau_m";     ///< 关节力矩 [Nm] - ArrayXD
-  constexpr const char *tau_c      = "tau_c";     ///< 指令关节力矩 [Nm] - ArrayXD
-  constexpr const char *tauFiltered_m    = "tau_filtered_m"; ///< 滤波后关节力矩 [Nm] - ArrayXD
-  constexpr const char *tauVel_c         = "tau_vel_c";      ///< 指令力矩微分 [Nm/s] - ArrayXD
-  constexpr const char *tauExt_inBase    = "tau_ext_base";   ///< 基坐标系中外部力矩 [Nm] - Array6D
-  constexpr const char *tauExt_inStiff   = "tau_ext_stiff";  ///< 力控坐标系中外部力矩 [Nm] - Array6D
+  constexpr const char *tau_c      = "tau_c";     ///< 指令关节力矩 [Nm] - ArrayXD。仅在打开实时模式控制之后数据有效。
+  constexpr const char *tauFiltered_m    = "tau_filtered_m"; ///< 滤波后关节力矩 [Nm] - ArrayXD。仅在打开实时模式控制之后数据有效。
+  constexpr const char *tauVel_c         = "tau_vel_c";      ///< 指令力矩微分 [Nm/s] - ArrayXD。仅在打开实时模式控制之后数据有效。
+  constexpr const char *tauExt_inBase    = "tau_ext_base";   ///< 基坐标系中外部力矩 [Nm] - Array6D。仅在打开实时模式控制之后数据有效。
+  constexpr const char *tauExt_inStiff   = "tau_ext_stiff";  ///< 力控坐标系中外部力矩 [Nm] - Array6D。仅在打开实时模式控制之后数据有效。
   constexpr const char *theta_m          = "theta_m";        ///< 电机位置 - ArrayXD
   constexpr const char *thetaVel_m       = "theta_vel_m";        ///< 电机位置微分 - ArrayXD
   constexpr const char *motorTau         = "motor_tau";          ///< 电机转矩 - ArrayXD
-  constexpr const char *motorTauFiltered = "motor_tau_filtered"; ///< 滤波后电机转矩 - ArrayXD
+  constexpr const char *motorTauFiltered = "motor_tau_filtered"; ///< 滤波后电机转矩 - ArrayXD。仅在打开实时模式控制之后数据有效。
+  constexpr const char *keypads  = "io_keypad";    ///< 末端按键状态 - ArrayXD
  }
 
  /**
@@ -183,7 +191,8 @@ namespace rokae {
    flange = 2, ///< 法兰坐标系
    tool   = 3, ///< 工具坐标系
    wobj   = 4, ///< 工件坐标系
-   path   = 5  ///< 路径坐标系
+   path   = 5, ///< 路径坐标系
+   rail   = 6  ///< 导轨基坐标系
  };
 
  /**
@@ -201,7 +210,7 @@ namespace rokae {
      toolFrame, ///< 工具坐标系
      wobjFrame, ///< 工件坐标系
      jointSpace, ///< 轴空间
-     singularityAvoidMode, ///< 奇异规避模式，仅适用于xMateCR和xMateSR机型，规避方法是锁定4轴
+     singularityAvoidMode, ///< 奇异规避模式，适用于工业六轴, xMateCR和xMateSR机型，规避方法是锁定4轴
      baseParallelMode ///< 平行基座模式，仅适用于xMateCR和xMateSR机型
    };
  };
@@ -223,6 +232,15 @@ namespace rokae {
  };
 
  /**
+  * @brief 奇异规避方式
+  */
+ enum class AvoidSingularityMethod {
+   lockAxis4, ///< 四轴锁定
+   wrist,     ///< 牺牲姿态
+   jointWay   ///< 轴空间短轨迹插补
+ };
+
+ /**
   * @brief 事件信息 - map类型
   */
  typedef std::unordered_map<std::string, std::any> EventInfo;
@@ -236,7 +254,9 @@ namespace rokae {
   */
  enum class Event {
    moveExecution, ///< 非实时运动指令执行信息
-   safety         ///< 安全 (是否碰撞)
+   safety,        ///< 安全 (是否碰撞)
+   rlExecution,   ///< RL执行状态
+   logReporter    ///< 控制器日志上报
  };
 
  /**
@@ -252,6 +272,7 @@ namespace rokae {
    constexpr const char *WaypointIndex = "wayPointIndex"; ///< 当前正在执行的轨迹目标点下标, 从0开始; 类型int
    constexpr const char *Error = "error"; ///< 错误码, 运动指令执行前或执行中的错误; 类型error_code
    constexpr const char *Remark = "remark"; ///< 其它执行信息，目前包括目标点距离过近的告警信息; 类型string
+   constexpr const char *CustomInfo = "customInfo"; ///< 用户自定义信息, 对应NrtCommand::customInfo; 类型string
   }
   /**
    * @brief 安全相关
@@ -259,6 +280,26 @@ namespace rokae {
   namespace Safety {
    constexpr const char *Collided = "collided"; ///< 是否碰撞; 类型bool, true-发生碰撞 | false-未发生或已恢复
   }
+
+  /**
+   * @brief RL程序执行状态
+   */
+  namespace RlExecution {
+   constexpr const char *TaskName = "taskName"; ///< 执行的任务名称; 类型string
+   constexpr const char *LookaheadLine = "lookaheadLine"; ///< 前瞻行号; 类型int
+   constexpr const char *LookaheadFile = "lookaheadFile"; ///< 前瞻到的文件名; 类型string
+   constexpr const char *ExecuteLine = "executeLine"; ///< 执行行号; 类型int
+   constexpr const char *ExecuteFile = "executeFile"; ///< 正在执行的文件名; 类型string
+  }
+
+  /**
+   * @brief 控制器日志上报
+   */
+  namespace LogReporter {
+   constexpr const char* Ecode = "ecode"; ///< 控制器日志错误码; 类型int
+   constexpr const char* Edetail = "edetail"; ///< 控制器日志报错信息; 类型string
+  }
+
  }
 
 // *******************          Data types            ********************
@@ -308,7 +349,7 @@ namespace rokae {
 
    std::array<double, 3> trans {}; ///< 平移量 [X, Y, Z], 单位:米
    std::array<double, 3> rpy {};   ///< 欧拉角 [Rx, Ry, Rz], 单位:弧度
-   std::array<double, 16> pos {};  ///< 行优先齐次变换矩阵
+   std::array<double, 16> pos {};  ///< 行优先齐次变换矩阵。只用于实时模式笛卡尔位置/阻抗控制。
  };
 
  /**
@@ -338,6 +379,13 @@ namespace rokae {
  class XCORE_API CartesianPosition : public Frame, public Finishable {
   public:
    using Frame::Frame;
+
+   /**
+    * @brief 构造函数
+    * @param values
+    */
+   CartesianPosition(std::initializer_list<double> values);
+
    /**
     * @brief 偏移
     */
@@ -368,7 +416,7 @@ namespace rokae {
    double elbow { 0 };      ///< 臂角, 适用于7轴机器人, 单位：弧度
    bool hasElbow { false }; ///< 是否有臂角
    std::vector<int> confData; ///< 轴配置数据，长度为8: [cf1, cf2, cf3, cf4, cf5, cf6, cf7, cfx]
-   std::vector<double> external; ///< 外部关节角度, 单位:弧度
+   std::vector<double> external; ///< 外部关节数值 单位:弧度|米。导轨单位米
  };
 
  /**
@@ -400,7 +448,7 @@ namespace rokae {
    JointPosition(size_t n, double v = 0);
 
    std::vector<double> joints; ///< 关节角度值, 单位:弧度
-   std::vector<double> external; ///< 外部关节角度值, 单位:弧度
+   std::vector<double> external; ///< 外部关节数值, 单位:弧度|米。导轨单位米
  };
 
  /**
@@ -409,7 +457,7 @@ namespace rokae {
   */
  class XCORE_API Torque : public Finishable {
   public:
-   Torque() = default;
+   Torque();
 
    /**
     * @brief constructor
@@ -430,6 +478,11 @@ namespace rokae {
     */
    Torque(size_t n, double v = 0);
 
+   Torque(const Torque&);
+   Torque& operator=(const Torque&);
+   Torque(Torque&&);
+   Torque& operator=(Torque&&);
+
    std::vector<double> tau; ///< 期望关节扭矩，单位: Nm
  };
 
@@ -449,7 +502,7 @@ namespace rokae {
 
    double mass { 0 };  ///< 负载质量, 单位:千克
    std::array<double, 3> cog {};     ///< 质心 [x, y, z], 单位:米
-   std::array<double, 3> inertia {}; ///< 惯量 [ix, iy, iz, 单位:千克·平方米
+   std::array<double, 3> inertia {}; ///< 惯量 [ix, iy, iz], 单位:千克·平方米
  };
 
  /**
@@ -518,7 +571,7 @@ namespace rokae {
    WorkToolInfo(std::string name, bool isHeld, const Frame &posture, const Load &load);
 
    std::string name {};  ///< 名称
-   std::string alias {}; ///< 别名, 暂未使用
+   std::string alias {}; ///< 描述
    bool robotHeld {};    ///< 是否机器人手持
    Frame pos {};         ///< 位姿
    Load load {};         ///< 负载
@@ -531,17 +584,31 @@ namespace rokae {
  class XCORE_API NrtCommand {
   public:
 
-   int speed { USE_DEFAULT }; ///< 速率
-   int zone { USE_DEFAULT };  ///< 转弯区大小
+   /**
+    * @brief 机器人末端最大线速度, 单位mm/s
+    * @see setDefaultSpeed()
+    */
+   double speed { USE_DEFAULT };
 
-  protected:
+   /**
+    * @brief 转弯区半径大小，单位mm
+    * @see setDefaultZone()
+    */
+   double zone { USE_DEFAULT };
+
+   /**
+    * @brief 自定义信息，可在运动信息反馈中返回出来
+    */
+   std::string customInfo {};
+
    NrtCommand() = default;
+
    /**
     * @brief constructor
-    * @param speed 本条指令的速度
-    * @param zone 本条指令的转弯区
+    * @param speed 本条指令的速度, 单位mm/s
+    * @param zone 本条指令的转弯区, 单位mm
     */
-   NrtCommand(int speed, int zone);
+   NrtCommand(double speed, double zone);
 
    virtual ~NrtCommand() = default;
  };
@@ -554,12 +621,30 @@ namespace rokae {
   public:
    /**
     * @param target 目标轴角度
-    * @param speed 运行速度
-    * @param zone 转弯区
+    * @param speed 末端线速度, 单位mm/s, 关节速度根据末端线速度大小划分几个区间，详见setDefaultSpeed()
+    * @param zone 转弯区, 单位mm
     */
-   MoveAbsJCommand(JointPosition target, int speed = USE_DEFAULT, int zone = USE_DEFAULT);
+   MoveAbsJCommand(JointPosition target, double speed = USE_DEFAULT, double zone = USE_DEFAULT);
 
    JointPosition target; ///< 目标关节点位
+
+   double jointSpeed { USE_DEFAULT }; ///< 关节速度百分比，范围[0, 1]。大于等于0时生效；小于0时仍使用speed计算出的关节速度
+ };
+
+ /**
+  * @brief 运动停留指令。可插在两条运动指令之间，前一条运动到位后，等待一段时间，再执行下一条。
+  * 该指令执行完不会有信息反馈
+  */
+ class XCORE_API MoveWaitCommand : public NrtCommand {
+  public:
+
+   /**
+    * @brief Constructor
+    * @param duration 时长
+    */
+   MoveWaitCommand(std::chrono::steady_clock::duration duration);
+
+   std::chrono::steady_clock::duration duration_; ///< 停留时长, 最小有效时长1ms
  };
 
  /**
@@ -570,13 +655,15 @@ namespace rokae {
   public:
    /**
     * @param target 目标笛卡尔点位
-    * @param speed 运行速度
-    * @param zone 转弯区
+    * @param speed 末端线速度, 单位mm/s, 关节速度根据末端线速度大小划分几个区间，详见setDefaultSpeed()
+    * @param zone 转弯区, 单位mm
     */
-   MoveJCommand(CartesianPosition target, int speed = USE_DEFAULT, int zone = USE_DEFAULT);
+   MoveJCommand(CartesianPosition target, double speed = USE_DEFAULT, double zone = USE_DEFAULT);
 
    CartesianPosition target; ///< 目标笛卡尔点位
    CartesianPosition::Offset offset; ///< 偏移选项
+
+   double jointSpeed { USE_DEFAULT }; ///< 关节速度百分比，范围[0, 1]。大于等于0时生效；小于0时仍使用speed计算出的关节速度
  };
 
  /**
@@ -587,13 +674,15 @@ namespace rokae {
   public:
    /**
     * @param target 目标笛卡尔点位
-    * @param speed 速率
-    * @param zone 转弯区
+    * @param speed 末端线速度, 单位mm/s
+    * @param zone 转弯区, 单位mm
     */
-   MoveLCommand(CartesianPosition target, int speed = USE_DEFAULT, int zone = USE_DEFAULT);
+   MoveLCommand(CartesianPosition target, double speed = USE_DEFAULT, double zone = USE_DEFAULT);
 
    CartesianPosition target; ///< 目标笛卡尔点位
    CartesianPosition::Offset offset; ///< 偏移选项
+
+   double rotSpeed { USE_DEFAULT }; ///< 空间旋转速度，单位rad/s。大于等于0时生效；小于0时旋转速度默认为200°/s
  };
 
  /**
@@ -605,15 +694,17 @@ namespace rokae {
    /**
     * @param target 目标点
     * @param aux 辅助点
-    * @param speed 运行速度
-    * @param zone 转弯区
+    * @param speed 末端线速度, 单位mm/s, 关节速度根据末端线速度大小划分几个区间，详见setDefaultSpeed()
+    * @param zone 转弯区, 单位mm
     */
-   MoveCCommand(CartesianPosition target, CartesianPosition aux, int speed = USE_DEFAULT, int zone = USE_DEFAULT);
+   MoveCCommand(CartesianPosition target, CartesianPosition aux, double speed = USE_DEFAULT, double zone = USE_DEFAULT);
 
    CartesianPosition target; ///< 目标笛卡尔点位
    CartesianPosition::Offset targetOffset; ///< 偏移选项
    CartesianPosition aux;    ///< 辅助点位
    CartesianPosition::Offset auxOffset; ///< 偏移选项
+
+   double rotSpeed { USE_DEFAULT }; ///< 空间旋转速度，单位rad/s。大于等于0时生效；小于0时旋转速度默认为200°/s
  };
 
  /**
@@ -621,17 +712,26 @@ namespace rokae {
   */
  class XCORE_API MoveCFCommand : public MoveCCommand{
   public:
-   using MoveCCommand::MoveCCommand;
+   /**
+    * @brief 全圆姿态旋转类型
+    */
+   enum RotType {
+     constPose, ///< 不变姿态
+     rotAxis,   ///< 动轴旋转
+     fixedAxis  ///< 定轴旋转
+   };
+
    /**
     * @param target 目标点
     * @param aux 辅助点
-    * @param speed 运行速度
-    * @param zone 转弯区
-    * @param angle 执行角度
+    * @param speed 末端线速度, 单位mm/s
+    * @param zone 转弯区, 单位mm
+    * @param angle 执行角度, 单位弧度
     */
-   MoveCFCommand(const CartesianPosition &target, const CartesianPosition &aux, double angle, int speed = USE_DEFAULT, int zone = USE_DEFAULT);
+   MoveCFCommand(const CartesianPosition &target, const CartesianPosition &aux, double angle, double speed = USE_DEFAULT, double zone = USE_DEFAULT);
 
    double angle { 0 }; ///< 全圆执行角度, 单位: 弧度
+   RotType rotType { constPose }; ///< 全圆姿态旋转模式
  };
 
  /**
@@ -645,15 +745,18 @@ namespace rokae {
     * @param rStep 每旋转单位角度，半径的变化 [m/rad]
     * @param angle 合计旋转角度 [rad]
     * @param dir 旋转方向, true - clockwise | false - anticlockwise
-    * @param speed 运行速度
+    * @param speed 末端线速度, 单位mm/s
     */
-   MoveSPCommand(const CartesianPosition &target, double r0, double rStep, double angle, bool dir, int speed = USE_DEFAULT);
+   MoveSPCommand(const CartesianPosition &target, double r0, double rStep, double angle, bool dir, double speed = USE_DEFAULT);
 
    CartesianPosition target; ///< 终点笛卡尔点位, 只使用点位的rpy来指定终点的姿态
+   CartesianPosition::Offset targetOffset; ///< 偏移选项
    double radius { 0 };      ///< 初始半径, 单位: 米
    double radius_step { 0 }; ///< 每旋转单位角度，半径的变化，单位: 米/弧度
    double angle { 0 };       ///< 合计旋转角度, 单位: 弧度
    bool direction;           ///< 旋转方向, true - 顺时针 | false - 逆时针
+
+   double rotSpeed { USE_DEFAULT }; ///< 空间旋转速度，单位rad/s。大于等于0时生效；小于0时旋转速度默认为200°/s
  };
 
  /**
@@ -684,6 +787,19 @@ namespace rokae {
    const std::string timestamp; ///< 日期及时间
    const std::string content;   ///< 日志内容
    const std::string repair;    ///< 修复办法
+ };
+
+ /**
+  * @brief 末端按键状态
+  */
+ struct KeyPadState {
+   bool key1_state = false; ///< CR1号
+   bool key2_state = false; ///< CR2号
+   bool key3_state = false; ///< CR3号
+   bool key4_state = false; ///< CR4号
+   bool key5_state = false; ///< CR5号
+   bool key6_state = false; ///< CR6号
+   bool key7_state = false; ///< CR7号
  };
 
 #if defined(XCORESDK_SUPPRESS_DLL_WARNING)
