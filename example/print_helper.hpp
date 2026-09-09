@@ -1,11 +1,12 @@
 ﻿/**
  * @file print_helper.hpp
- * @brief 打印接口调用结果
+ * @brief Print API call results
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #ifndef LIBROKAEEXAMPLE_EXAMPLE_CPP_PRINT_HELPER_HPP_
 #define LIBROKAEEXAMPLE_EXAMPLE_CPP_PRINT_HELPER_HPP_
@@ -24,27 +25,38 @@
 inline std::ostream &operator<<(std::ostream &os, rokae::OperationState st) {
   using OP = rokae::OperationState;
   switch(st) {
-    case OP::idle: os << "空闲"; break;
-    case OP::jog: os << "Jog状态"; break;
-    case OP::rtControlling: os << "实时模式控制中"; break;
-    case OP::drag: os << "拖动已开启"; break;
-    case OP::rlProgram: os << "RL工程运行中"; break;
-    case OP::demo: os << "Demo演示中"; break;
-    case OP::dynamicIdentify: os << "动力学辨识中"; break;
-    case OP::frictionIdentify: os << "摩擦力辨识中"; break;
-    case OP::loadIdentify: os << "负载辨识中"; break;
-    case OP::moving: os << "运动中"; break;
-    case OP::jogging: os << "Jog运动中"; break;
-    case OP::unknown: default: os << "未知"; break;
+    case OP::idle: os << "Idle"; break;
+    case OP::jog: os << "Jog state"; break;
+    case OP::rtControlling: os << "Real-time mode controlling"; break;
+    case OP::drag: os << "Drag teaching enabled"; break;
+    case OP::rlProgram: os << "RL project running"; break;
+    case OP::demo: os << "Demo running"; break;
+    case OP::dynamicIdentify: os << "Dynamics identification in progress"; break;
+    case OP::frictionIdentify: os << "Friction identification in progress"; break;
+    case OP::loadIdentify: os << "Load identification in progress"; break;
+    case OP::moving: os << "Moving"; break;
+    case OP::jogging: os << "Jogging"; break;
+    case OP::unknown: default: os << "Unknown"; break;
   }
   return os;
 }
 
 inline std::ostream &operator<<(std::ostream &os, rokae::OperateMode mode) {
   switch(mode) {
-    case rokae::OperateMode::automatic: os << "自动"; break;
-    case rokae::OperateMode::manual: os << "手动"; break;
-    case rokae::OperateMode::unknown: default: os << "未知"; break;
+    case rokae::OperateMode::automatic: os << "Automatic"; break;
+    case rokae::OperateMode::manual: os << "Manual"; break;
+    case rokae::OperateMode::unknown: default: os << "Unknown"; break;
+  }
+  return os;
+}
+
+inline std::ostream &operator<<(std::ostream &os, rokae::PowerState st) {
+  switch(st) {
+    case rokae::PowerState::on: os << "Powered on"; break;
+    case rokae::PowerState::off: os << "Powered off"; break;
+    case rokae::PowerState::estop: os << "Emergency stop pressed"; break;
+    case rokae::PowerState::gstop: os << "Safety gate open"; break;
+    case rokae::PowerState::unknown: default: os << "Unknown"; break;
   }
   return os;
 }
@@ -77,7 +89,7 @@ inline std::ostream &operator<<(std::ostream &os, const std::vector<T> &arr) {
  * @brief Info formatter
  */
 inline std::ostream &operator<<(std::ostream &os, const rokae::Info &info) {
-  os << "控制器版本 " << info.version << " | 机型 " << info.type << " | 轴数 " << info.joint_num;
+  os << "Controller version " << info.version << " | Model " << info.type << " | Axis count " << info.joint_num;
   return os;
 }
 
@@ -94,9 +106,9 @@ inline std::ostream &operator<<(std::ostream &os, const rokae::Frame &frame) {
  * @brief CartesianPosition formatter
  */
 inline std::ostream &operator<<(std::ostream &os, const rokae::CartesianPosition &cart) {
-  os << "位姿 - [ X: " << cart.trans[0] << " Y: " << cart.trans[1] << " Z: " << cart.trans[2] <<
+  os << "Pose - [ X: " << cart.trans[0] << " Y: " << cart.trans[1] << " Z: " << cart.trans[2] <<
      " Rx: " << cart.rpy[0] << " Ry: " << cart.rpy[1] << " Rz: " << cart.rpy[2] << " ]";
-  os << "\n臂角 - " << cart.elbow;
+  os << "\nElbow angle - " << cart.elbow;
   if(!cart.confData.empty()) {
     os << "\nConf - [ ";
     for(const auto &d: cart.confData){
@@ -111,8 +123,8 @@ inline std::ostream &operator<<(std::ostream &os, const rokae::CartesianPosition
  * @brief Load formatter
  */
 inline std::ostream &operator<<(std::ostream &os, const rokae::Load &load) {
-  os << "质量: " << load.mass << "kg, 重心 X: " << load.cog[0] << " Y: " << load.cog[1] << " Z: " << load.cog[2] <<
-     ", 惯量 ix: " << load.inertia[0] << " iy: " << load.inertia[1] << " iz: " << load.inertia[2];
+  os << "Mass: " << load.mass << "kg, Center of gravity X: " << load.cog[0] << " Y: " << load.cog[1] << " Z: " << load.cog[2] <<
+     ", Inertia ix: " << load.inertia[0] << " iy: " << load.inertia[1] << " iz: " << load.inertia[2];
   return os;
 }
 
@@ -120,8 +132,8 @@ inline std::ostream &operator<<(std::ostream &os, const rokae::Load &load) {
  * @brief Toolset formatter
  */
 inline std::ostream &operator<<(std::ostream &os, const rokae::Toolset &toolset) {
-  os << "手持 - " << toolset.end << "\n外部 - " << toolset.ref <<
-     "\n负载 - " << toolset.load;
+  os << "End-effector - " << toolset.end << "\nExternal - " << toolset.ref <<
+     "\nLoad - " << toolset.load;
   return os;
 }
 

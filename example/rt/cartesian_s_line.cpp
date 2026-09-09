@@ -1,11 +1,12 @@
 ﻿/**
  * @file cartesian_s_line.cpp
- * @brief 实时模式 - 笛卡尔空间S规划。程序适用机型：xMateER7 Pro
+ * @brief Real-time mode - Cartesian space S-curve planning. Applicable model: xMateER7 Pro
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <iostream>
 #include <cmath>
@@ -25,10 +26,10 @@ int main() {
   rokae::xMateErProRobot robot;
 
   try {
-    // 机器人地址192.168.0.160，本机地址192.168.0.100
+    // Robot address 192.168.0.160, local address 192.168.0.100
     robot.connectToRobot("192.168.0.160", "192.168.0.100");
   } catch(const rokae::Exception &e) {
-    std::cerr << "连接失败 " << e.what();
+    std::cerr << "Connection failed " << e.what();
     return 0;
   }
 
@@ -41,14 +42,14 @@ int main() {
   }
   robot.setOperateMode(rokae::OperateMode::automatic, ec);
   robot.setPowerState(true, ec);
-  // 先运动到起始位置, xMate Pro机型的拖拽位姿
+  // Move to the starting position first, the drag-teaching pose for xMate Pro models
   MoveAbsJCommand start_joint({0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0}, 200, 0);
   std::string id;
   robot.moveAppend(start_joint, id, ec);
   robot.moveStart(ec);
   helper::waitRobot(robot);
 
-  // 切换到实时模式, 上电
+  // Switch to real-time mode, power on
   robot.setMotionControlMode(MotionControlMode::RtCommand, ec);
   robot.setOperateMode(rokae::OperateMode::automatic,ec);
   robot.setPowerState(true, ec);
@@ -57,16 +58,16 @@ int main() {
   try {
     rtCon = robot.getRtMotionController().lock();
   } catch (const std::exception &e) {
-    std::cerr << "获取实时控制器失败 " << e.what();
+    std::cerr << "Get rt motion controller failed " << e.what();
     return 0;
   }
 
   try {
-    // 切换到实时模式之后，再开始接收状态数据
+    // Start receiving state data only after switching to real-time mode
     robot.startReceiveRobotState(std::chrono::milliseconds(1),
                                  {RtSupportedFields::jointPos_m, RtSupportedFields::tcpPose_m});
   } catch (const std::exception &e) {
-    std::cerr << "接收实时状态数据失败" << e.what();
+    std::cerr << "Receive rt state data failed " << e.what();
     return 0;
   }
 
@@ -79,34 +80,34 @@ int main() {
   double time = 0;
 
   std::function<CartesianPosition()> callback = [&, rtCon]() {
-    time += 0.001; // 按1ms为周期规划
+    time += 0.001; // Plan with a 1ms period
     if(init) {
-      // 读取当前位置
-      // 注意: 只有第一个周期可以发送读取到的位置，目的是让机器人从当前位置开始运动。后续周期不能发送读取到的位置作为指令。
+      // Read the current position
+      // Note: only the first cycle may send the position that was read, so the robot starts moving from its current position. Subsequent cycles must not send the read position as a command.
       robot.getStateData(RtSupportedFields::tcpPose_m, init_pos);
       end_pos = init_pos;
-      end_pos[11] -= 0.2; // 设置这一段运动的目标点是从起始位置，沿Z轴负方向移动0.2米
+      end_pos[11] -= 0.2; // Set the target of this motion segment to be 0.2m in the negative Z direction from the starting position
       init = false;
     }
 
     std::array<double, 16> pose_start = init_pos;
 
-    // 提取起点位置 pos_1 和目标位置 pos_2
+    // Extract the starting position pos_1 and target position pos_2
     Eigen::Vector3d pos_1(pose_start[3], pose_start[7], pose_start[11]);
     Eigen::Vector3d pos_2(end_pos[3], end_pos[7], end_pos[11]);
 
-    // 计算总路径向量 pos_delta 和路径长度 s。
+    // Compute the total path vector pos_delta and path length s.
     Eigen::Vector3d pos_delta = pos_2 - pos_1;
     double s = pos_delta.norm();
     Eigen::Vector3d pos_delta_vector = pos_delta.normalized();
 
-    // s → 总路径长度
+    // s -> total path length
     CartMotionGenerator cart_s(0.05, s);
-    // 同步已经运动的弧长, 也就是0
+    // Synchronize the arc length already traveled, which is 0
     cart_s.calculateSynchronizedValues(0);
 
-    // 从起始和目标的齐次矩阵里提取旋转部分，转换为 Quaternion。
-    // 后续会用四元数 slerp 做平滑旋转插值
+    // Extract the rotation part from the starting and target homogeneous matrices and convert to a Quaternion.
+    // Quaternion slerp will be used afterward for smooth rotation interpolation
     Eigen::Matrix3d mat_start, mat_end;
     mat_start << pose_start[0], pose_start[1], pose_start[2], pose_start[4], pose_start[5], pose_start[6],
       pose_start[8], pose_start[9], pose_start[10];
@@ -120,17 +121,17 @@ int main() {
     Eigen::Vector3d pos_cur;
     CartesianPosition cmd;
 
-    // 根据时间 time 计算已经走过的路程长度 delta_s
-    // 如果未到终点，返回 false
-    // 如果到达终点，返回 true，设置指令为最后一条指令
+    // Compute the distance traveled delta_s based on time
+    // If the endpoint has not been reached, return false
+    // If the endpoint has been reached, return true and set the command as the last command
     if (!cart_s.calculateDesiredValues(time, &delta_s)) {
-      // 位置插值：沿着起点和终点的直线，走 delta_s 的比例。
+      // Position interpolation: move along the straight line between start and end, by the fraction delta_s.
       pos_cur = pos_1 + pos_delta * delta_s / s;
-      // 姿态插值：使用四元数 slerp，实现平滑旋转过渡
+      // Orientation interpolation: use quaternion slerp for a smooth rotation transition
       Eigen::Quaterniond rot_cur = rot_start.slerp(delta_s / s, rot_end);
       mat_cur = rot_cur.normalized().toRotationMatrix();
 
-      // 最终生成 4x4 齐次矩阵，写入 cmd.pos
+      // Finally build the 4x4 homogeneous matrix and write it into cmd.pos
       std::array<double, 16> new_pose = {
         {mat_cur(0, 0), mat_cur(0, 1), mat_cur(0, 2), pos_cur(0), mat_cur(1, 0), mat_cur(1, 1),
          mat_cur(1, 2), pos_cur(1), mat_cur(2, 0), mat_cur(2, 1), mat_cur(2, 2), pos_cur(2), 0, 0, 0, 1}};
@@ -142,17 +143,17 @@ int main() {
   };
 
   try {
-    // 因为callback中用到了getStateData(), 所以参数useStateDataInLoop=true
+    // Since getStateData() is used in the callback, the parameter useStateDataInLoop=true
     rtCon->setControlLoop(callback, 0, true);
-    // 开始运动前先设置为笛卡尔空间位置控制
+    // Set to Cartesian space position control before starting motion
     rtCon->startMove(RtControllerMode::cartesianPosition);
     rtCon->startLoop(true);
-    print(std::cout, "控制结束");
+    print(std::cout, "Control finished");
   } catch (const std::exception &e) {
-    std::cerr << "运动中出错 " << e.what();
+    std::cerr << "Error occurred during motion " << e.what();
   }
 
-  // 下电，关闭实时模式
+  // Power off, disable real-time mode
   robot.setPowerState(false, ec);
   robot.setOperateMode(OperateMode::manual, ec);
   robot.setMotionControlMode(MotionControlMode::Idle, ec);

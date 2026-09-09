@@ -1,84 +1,86 @@
-# xCore SDK 机器人控制接口
+# xCore SDK Robot Control Interface
 
-xCore SDK编程接口库是珞石机器人提供给客户用于二次开发的软件产品，通过编程接口库，客户可以对机器人进行一系列控制和操作。
+> **Note:** This document was translated from Chinese to English by Claude Code.
 
-## 在线文档
+xCore SDK is a programming interface library provided by Rokae Robotics for customer secondary development. Through this interface library, customers can perform a range of control operations on the robot.
 
-可以通过访问珞石官网在线文档，学习和了解其他SDK内容与其相关API的说明和使用，同时也便于了解珞石的其他技术产品。
+## Online Documentation
+
+Visit Rokae's official online documentation to learn about other SDK content and the related API descriptions and usage, and to learn about Rokae's other technical products.
 
 https://docs.rokae.com/docs/SDK/cpp
 
-## 控制模式
+## Control Modes
 
-xCore SDK提供对机器人的非实时控制和实时控制。 
+xCore SDK provides both non-real-time and real-time control of the robot.
 
-### 非实时控制
+### Non-real-time Control
 
-* 运动: 主要是通过发送目标点为关节点位或笛卡尔点位的运动指令，使用控制器内部的轨迹规划
-  * 轴空间运动(MoveAbsJ, MoveJ), 笛卡尔空间运动(MoveL, MoveC, MoveCF, MoveSP)，设置指令的运动速度和转弯区
-  * 支持导轨联动, 以及设置导轨参数
-  * 支持可达性校验，设置加速度等，开启奇异规避功能等
-* 力控指令
-* 机器人通信
-  * 数字量和模拟量I/O，寄存器读写
-  * XMS和XMC机型末端485通信 
-* RL工程的传输，查询与执行，设置工具工件
-* 拖动与路径回放（只针对协作机器人） 
-* 其他操作
-  * 基础的机器人位姿、状态读取
-  * Jog (机器人点动)
-  * 设置碰撞检测，获取碰撞状态
-  * 设置软限位，清除报警，查询控制器日志等等
-* 控制器升级与备份
+* Motion: mainly sends motion commands with target points in joint space or Cartesian space, using the controller's internal trajectory planning
+  * Joint space motion (MoveAbsJ, MoveJ), Cartesian space motion (MoveL, MoveC, MoveCF, MoveSP); set motion speed and blending zone for commands
+  * Supports external-axis (track) coordination and configuring track parameters
+  * Supports reachability verification, setting acceleration, enabling singularity avoidance, etc.
+* Force control commands
+* Robot communication
+  * Digital and analog I/O, register read/write
+  * XMS and XMC model end-effector RS-485 communication
+* RL project transfer, query, and execution; tool/workpiece configuration
+* Drag teaching and path playback (collaborative robots only)
+* Other operations
+  * Basic robot pose and status reading
+  * Jog (manual robot jogging)
+  * Configure collision detection, get collision status
+  * Set soft limits, clear alarms, query controller logs, etc.
+* Controller upgrade and backup
 
-### 实时控制
+### Real-time Control
 
-实时模式最高达1KHz的实时控制，可用于算法验证以及新应用的开发。
+Real-time mode supports control at up to 1 kHz, suitable for algorithm validation and new application development.
 
-* 协作机器人支持5种控制模式：
-  * 轴空间位置控制, 支持ServoJ功能
-  * 笛卡尔空间位置控制
-  * 轴空间阻抗控制
-  * 笛卡尔空间阻抗控制
-  * 直接力矩控制
-* 六轴工业机器人支持2种位置控制模式：
-  * 轴空间位置控制
-  * 笛卡尔空间位置控制
+* Collaborative robots support 5 control modes:
+  * Joint space position control, supports ServoJ
+  * Cartesian space position control
+  * Joint space impedance control
+  * Cartesian space impedance control
+  * Direct torque control
+* Six-axis industrial robots support 2 position control modes:
+  * Joint space position control
+  * Cartesian space position control
 
-## 兼容性
+## Compatibility
 
-### 机器人控制器
+### Robot Controller
 
-xCore控制器版本不低于 v3.2.1
+xCore controller version 3.2.1 or later
 
-### 编译环境
+### Build Environment
 
-| 操作平台                     |编译器| 平台            |语言|
+| OS Platform                     |Compiler| Platform            |Language|
 |--------------------------|---|---------------|----|
 | Ubuntu 18.04/20.04/22.04 |build-essential| x86_64<br/>aarch64 |C++|
 | Windows 10/11            |MSVC 14.1+| x86_64        |C++|
 
-## 编译
+## Build
 
-C++版本xCore SDK使用CMake构建工程，CMake版本不低于3.12。
+The C++ version of xCore SDK uses CMake to build the project; CMake version 3.12 or later is required.
 
-### 获取预编译库
+### Obtaining the Prebuilt Library
 
-本仓库仅包含头文件、示例与 CMake 工程，**不包含**预编译库（不占用 Git LFS 配额）。
+This repository contains only headers, examples, and the CMake project — it does **not** include prebuilt libraries (to avoid using up Git LFS quota).
 
-1. 克隆本仓库
-2. 打开与当前 SDK 版本对应的 [Release 页面](https://github.com/RokaeRobot/xCoreSDK-CPP/releases/tag/v0.7.1)（URL 格式：`…/releases/tag/v{VERSION}`，版本见 `CMakeLists.txt`；缺库时 `cmake` 也会打印直达链接）
-3. 下载匹配平台的库文件包
-4. 在仓库根目录解压，使文件落入 `lib/` 目录
+1. Clone this repository
+2. Open the [Release page](https://github.com/Crest-Robotics/xCoreSDK-CPP/releases/tag/v0.7.1) matching your SDK version (URL format: `…/releases/tag/v{VERSION}`; the version is in `CMakeLists.txt`; if the library is missing, `cmake` will also print a direct link)
+3. Download the library package matching your platform
+4. Extract it at the repository root so the files land in the `lib/` directory
 
-详细说明与包名对照见 [lib/README.md](lib/README.md)。
+See [lib/README.md](lib/README.md) for detailed instructions and the package-name reference.
 
-### 准备工作
+### Prerequisites
 
 #### Ubuntu
 
-* 安装g++和cmake `sudo apt install cmake g++`
-* 对于Ubuntu 18.04，默认的CMake版本是3.10，可使用下列方法安装最新版本的CMake
+* Install g++ and cmake: `sudo apt install cmake g++`
+* On Ubuntu 18.04, the default CMake version is 3.10; you can install the latest CMake using the steps below:
 
 ~~~
 sudo apt remove --purge --auto-remove cmake
@@ -92,13 +94,13 @@ sudo apt install kitware-archive-keyring
 sudo rm /etc/apt/trusted.gpg.d/kitware.gpg
 ~~~
 
-如果运行 `sudo apt update`出现`NO_PUBKEY`错误，运行:
+If `sudo apt update` produces a `NO_PUBKEY` error, run:
 
 ~~~
 sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 6AF7F09730B3F0A4
 ~~~
 
-再继续执行：
+Then continue with:
 
 ~~~
 sudo apt update
@@ -107,42 +109,42 @@ sudo apt install cmake
 
 #### Windows
 
-* 下载并安装Microsoft Visual Studio，版本不低于2017，选择安装 *使用C++的桌面应用* 。
+* Download and install Microsoft Visual Studio, version 2017 or later, with the *Desktop development with C++* workload selected.
 
-### 编译Targets
+### Build Targets
 
-*Note:* 根据不同的可执行程序名称，编译目标名称也会不同
+*Note:* Build target names vary depending on the executable name.
 
 * Build
     * *all* (the default if no target is provided)
     * *clean*
-    * *sdk_example* - 示例程序
-    * *install* - 安装可执行文件到 *CMAKE_INSTALL_PREFIX*
-    * *doc* - 生成API文档, 需要安装Doxygen
+    * *sdk_example* - example program
+    * *install* - installs executables to *CMAKE_INSTALL_PREFIX*
+    * *doc* - generates API documentation, requires Doxygen
 
-### CMake选项
+### CMake Options
 
-* `CMAKE_INSTALL_PREFIX` - 安装路径
-* `CMAKE_BUILD_TYPE` - 编译类型 
-* `XCORE_LINK_SHARED_LIBS` - 是否链接动态库
-* `XCORE_USE_XMATE_MODEL` - 是否使用xMate模型库进行运动学和动力学计算。目前支持Linux x86_64和Windows 64bit。 
+* `CMAKE_INSTALL_PREFIX` - install path
+* `CMAKE_BUILD_TYPE` - build type
+* `XCORE_LINK_SHARED_LIBS` - whether to link the shared library
+* `XCORE_USE_XMATE_MODEL` - whether to use the xMate model library for kinematics and dynamics calculations. Currently supports Linux x86_64 and Windows 64-bit.
 
-## 使用方法
+## Usage
 
-### 硬件设置
+### Hardware Setup
 
-xCore SDK通过以太网（TCP/IP）连接机器人。如果只使用非实时控制，对网络的要求并不高，通过有线或无线连接皆可，使工作站PC和机器人连接同一局域网。
-如果使用实时模式，建议通过有线网直连机器人，以保证网络稳定性。
+xCore SDK connects to the robot via Ethernet (TCP/IP). If only using non-real-time control, network requirements are low — wired or wireless connections both work, as long as the workstation PC and the robot are on the same LAN.
+If using real-time mode, a direct wired connection to the robot is recommended to ensure network stability.
 
-### 机器人设置
+### Robot Setup
 
-* xCore SDK在使用前不需要通过Robot Assist打开相关功能。
-* xCoreSDK为需要授权的功能，如遇“功能未授权”的错误信息，请联系客户支持人员
+* xCore SDK does not require enabling related features via Robot Assist before use.
+* xCoreSDK requires authorized features; if you encounter a "feature not authorized" error, please contact customer support.
 
-### 接口使用
+### Using the Interface
 
-见 *example*。更完整的接口说明、错误码、常见问题与场景示例，请参阅[在线文档](https://docs.rokae.com/docs/SDK/cpp)。
+See *example*. For a more complete description of the interface, error codes, common issues, and usage scenarios, refer to the [online documentation](https://docs.rokae.com/docs/SDK/cpp).
 
 # License
 
-> Copyright (C) 2026 ROKAE (Beijing) Technology Co., LTD. 
+> Copyright (C) 2026 ROKAE (Beijing) Technology Co., LTD.

@@ -1,12 +1,13 @@
 ﻿/**
  * @file torque_control.cpp
- * @brief 实时模式 - 直接力矩控制
- * 此示例需要使用xMateModel模型库，请设置编译选项XCORE_USE_XMATE_MODEL=ON
+ * @brief Real-time mode - Direct torque control
+ * This example requires the xMateModel model library; please set the build option XCORE_USE_XMATE_MODEL=ON
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <iostream>
 #include <cmath>
@@ -20,9 +21,9 @@
 using namespace rokae;
 
 /**
- * @brief 力矩控制. 注意:
- * 1) 力矩值不要超过机型的限制条件(见手册);
- * 2) 初次运行时请手握急停开关, 避免机械臂非预期运动造成碰撞
+ * @brief Torque control. Note:
+ * 1) The torque value must not exceed the limits of the robot model (see the manual);
+ * 2) Keep your hand on the emergency stop switch during the first run, to avoid collisions from unexpected arm motion
  */
 void torqueControl(xMateErProRobot &robot) {
   using namespace RtSupportedFields;
@@ -34,7 +35,7 @@ void torqueControl(xMateErProRobot &robot) {
   robot.startReceiveRobotState(std::chrono::milliseconds(1),
                                {jointPos_m, jointVel_m, jointAcc_c, tcpPose_m});
 
-  // 控制模式为力矩控制
+  // Control mode is torque control
   rtCon->startMove(RtControllerMode::torque);
 
   // Compliance parameters
@@ -65,7 +66,7 @@ void torqueControl(xMateErProRobot &robot) {
     std::array<double, 7> q{}, dq_m{}, ddq_c{};
     std::array<double, 16> pos_m {};
 
-    // 接收设置为true, 回调函数中可以直接读取
+    // Reception is set to true, so it can be read directly in the callback function
     robot.getStateData(jointPos_m, q);
     robot.getStateData(jointVel_m, dq_m);
     robot.getStateData(jointAcc_c, ddq_c);
@@ -113,21 +114,21 @@ void torqueControl(xMateErProRobot &robot) {
     return cmd;
   };
 
-  // 由于需要在callback里读取状态数据, 这里useStateDataInLoop = true
-  // 并且调用startReceiveRobotState()时, 设定的发送周期是1ms
+  // Since state data must be read in the callback, useStateDataInLoop = true here
+  // and the send period set when calling startReceiveRobotState() is 1ms
   rtCon->setControlLoop(callback, 0, true);
   rtCon->startLoop(true);
 }
 
 /**
- * @brief 发送0力矩. 力控模型准确的情况下, 机械臂应保持静止不动
+ * @brief Send zero torque. If the force control model is accurate, the arm should remain stationary
  */
 template <unsigned short DoF>
 void zeroTorque(Cobot<DoF> &robot) {
   error_code ec;
   auto rtCon = robot.getRtMotionController().lock();
 
-  // 控制模式为力矩控制
+  // Control mode is torque control
   rtCon->startMove(RtControllerMode::torque);
   Torque cmd {};
   cmd.tau.resize(DoF);
@@ -143,7 +144,7 @@ void zeroTorque(Cobot<DoF> &robot) {
 
   rtCon->setControlLoop(callback);
   rtCon->startLoop();
-  print(std::cout, "力矩控制结束");
+  print(std::cout, "Torque control finished");
 }
 
 /**
@@ -160,17 +161,17 @@ int main() {
       std::cerr << "Set motion control mode failed " << ec.message() << std::endl;
       return 0;
     }
-    // 上电
+    // Power on
     robot.setOperateMode(rokae::OperateMode::automatic,  ec);
     robot.setPowerState(true, ec);
-    // 先运动到起始位置, xMate Pro机型的拖拽位姿
+    // Move to the starting position first, the drag-teaching pose for xMate Pro models
     MoveAbsJCommand start_joint({0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0}, 200, 0);
     std::string id;
     robot.moveAppend(start_joint, id, ec);
     robot.moveStart(ec);
     helper::waitRobot(robot);
 
-    // 切换到实时模式控制
+    // Switch to real-time control mode
     robot.setMotionControlMode(MotionControlMode::RtCommand, ec);
     robot.setOperateMode(rokae::OperateMode::automatic, ec);
     robot.setPowerState(true, ec);
@@ -178,7 +179,7 @@ int main() {
     try {
       torqueControl(robot);
     } catch (const rokae::RealtimeMotionException &e) {
-      // 发生错误
+      // An error occurred
       print(std::cerr, e.what());
     }
 

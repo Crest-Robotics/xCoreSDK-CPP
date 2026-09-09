@@ -1,11 +1,12 @@
 ﻿/**
  * @file path_record.cpp
- * @brief 协作机型拖动示教，路径录制和回放
+ * @brief Collaborative robot drag teaching, path recording and playback
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <iostream>
 #include <thread>
@@ -21,12 +22,12 @@ void WaitRobot(BaseRobot *robot);
 void printHelp();
 
 /**
- * @brief 打印运动执行信息
+ * @brief Print motion execution info
  */
 void printInfo(const rokae::EventInfo &info) {
   using namespace rokae::EventInfoKey::MoveExecution;
-  print(std::cout, "[运动执行信息] ID:", std::any_cast<std::string>(info.at(ID)), "Index:", std::any_cast<int>(info.at(WaypointIndex)),
-        "已完成: ", std::any_cast<bool>(info.at(ReachTarget)) ? "YES": "NO", std::any_cast<error_code>(info.at(Error)),
+  print(std::cout, "[Motion execution info] ID:", std::any_cast<std::string>(info.at(ID)), "Index:", std::any_cast<int>(info.at(WaypointIndex)),
+        "Completed: ", std::any_cast<bool>(info.at(ReachTarget)) ? "YES": "NO", std::any_cast<error_code>(info.at(Error)),
         std::any_cast<std::string>(info.at(Remark)));
 }
 
@@ -38,10 +39,10 @@ int main() {
     std::string ip = "192.168.0.160";
     error_code ec;
     std::vector<std::string> paths;
-    xMateRobot robot(ip); // xMate 6轴机型
+    xMateRobot robot(ip); // xMate 6-axis model
 
     robot.setMotionControlMode(MotionControlMode::NrtCommand, ec);
-    // 拖动回放指令和其它运动指令类似，也通过运动信息回调的方式反馈运动完成
+    // Like other motion commands, the drag-playback command also reports motion completion via the motion-info callback
     robot.setEventWatcher(Event::moveExecution, printInfo, ec);
 
     printHelp();
@@ -49,47 +50,47 @@ int main() {
     char cmd = ' ';
     while(cmd != 'q') {
       std::string str;
-      // 从控制台读取命令
+      // Read a command from the console
       getline(std::cin, str);
       cmd = parseInput(str);
 
       switch(cmd) {
         case 'p':
-          if(str == "on") { robot.setPowerState(true, ec); std::cout << "* 机器人上电\n"; }
-          else { robot.setPowerState(false, ec); std::cout << "* 机器人下电\n"; }
+          if(str == "on") { robot.setPowerState(true, ec); std::cout << "* Robot powered on\n"; }
+          else { robot.setPowerState(false, ec); std::cout << "* Robot powered off\n"; }
           if(ec) break; continue;
         case 'm':
-          if(str == "manual") { robot.setOperateMode(OperateMode::manual, ec); std::cout << "* 手动模式\n"; }
-          else { robot.setOperateMode(OperateMode::automatic, ec); std::cout << "* 自动模式\n"; }
+          if(str == "manual") { robot.setOperateMode(OperateMode::manual, ec); std::cout << "* Manual mode\n"; }
+          else { robot.setOperateMode(OperateMode::automatic, ec); std::cout << "* Automatic mode\n"; }
           if(ec) break; continue;
         case 'd':
-          // 打开拖动前置条件: 需要切换机器人操作模式为手动模式，并下电
-          if(str == "on") { robot.enableDrag(DragParameter::cartesianSpace, DragParameter::freely, ec); cout << "* 打开拖动\n"; }
-          else { robot.disableDrag(ec); std::cout << "* 关闭拖动\n"; }
+          // Precondition for enabling drag: the robot operate mode must be switched to manual and the robot powered off
+          if(str == "on") { robot.enableDrag(DragParameter::cartesianSpace, DragParameter::freely, ec); cout << "* Drag enabled\n"; }
+          else { robot.disableDrag(ec); std::cout << "* Drag disabled\n"; }
           if(ec) break; continue;
         case 'a':
-          robot.startRecordPath(30, ec); std::cout << "* 开始录制路径\n";
+          robot.startRecordPath(30, ec); std::cout << "* Started recording path\n";
           if(ec) break; continue;
         case 'b':
-          robot.stopRecordPath(ec); std::cout << "* 停止录制路径\n";
+          robot.stopRecordPath(ec); std::cout << "* Stopped recording path\n";
           if(ec) break; continue;
         case 's':
-          robot.saveRecordPath(str, ec); std::cout << "* 保存路径为: " << str << endl;
+          robot.saveRecordPath(str, ec); std::cout << "* Saved path as: " << str << endl;
           if(ec) break; continue;
         case 'c':
-          robot.cancelRecordPath(ec); cout << "* 取消录制\n";
+          robot.cancelRecordPath(ec); cout << "* Recording cancelled\n";
           if(ec) break; continue;
         case 'u':
           paths = robot.queryPathLists(ec);
-          if(paths.empty()) cout << "* 没有已保存的路径\n";
+          if(paths.empty()) cout << "* No saved paths\n";
           else {
-            cout << "* 已保存的路径: ";
+            cout << "* Saved paths: ";
             for(auto p : paths) cout << p << ", ";
             cout << endl;
           }
           if(ec) break; continue;
         case 'v':
-          cout << "* 删除路径\"" << str << "\"\n";
+          cout << "* Deleting path \"" << str << "\"\n";
           robot.removePath(str, ec);
           if(ec) break; continue;
         case 'r': {
@@ -97,22 +98,22 @@ int main() {
           if (ec) break;
           robot.moveStart(ec);
           if (ec) break;
-          cout << "* 开始回放路径\"" << str << "\", 速率100%\n";
+          cout << "* Starting path playback \"" << str << "\", rate 100%\n";
           WaitRobot(&robot);
-          cout << "* 回放结束\n";
+          cout << "* Playback finished\n";
           continue;
         }
         case 'z':
-          robot.moveReset(ec); cout << "* 重置运动缓存\n";
+          robot.moveReset(ec); cout << "* Motion buffer reset\n";
           if(ec) break; continue;
         case 'h':
           printHelp(); continue;
         case 'q':
           std::cout << " --- Quit --- \n"; continue;
         default:
-          std::cerr << "无效输入\n"; continue;
+          std::cerr << "Invalid input\n"; continue;
       }
-      cerr << "! 错误信息: " << ec.message() << endl;
+      cerr << "! Error message: " << ec.message() << endl;
     }
 
     robot.disconnectFromRobot(ec);
@@ -140,28 +141,28 @@ static const std::unordered_map<std::string, char> ConsoleInput = {
 }; ///< command -> char
 
 /**
- * @brief 打印说明
+ * @brief Print usage instructions
  */
 void printHelp() {
-  cout << " --- 拖动与路径回放使用示例 --- " << endl
-       << "格式 <命令>[:参数] 例如 save:track0" << endl << endl
-       << "命令                 |  参数"        << endl
-       << "power   机器人上下电   | on|off"      << endl
-       << "mode    手/自动模式    | manual|auto" << endl
-       << "drag    打开关闭拖动   | on|off"      << endl
-       << "start   开始录制路径   |"             << endl
-       << "stop    结束录制路径   |"             << endl
-       << "save    保存路径      | 路径名称"      << endl
-       << "cancel  取消录制      |"             << endl
-       << "query   查询已保存路径 |"            << endl
-       << "remove  删除路径      | 路径名称"     << endl
-       << "reset   重置运动缓存   |"             << endl
-       << "replay  路径回放      | 路径名称"      << endl
-       << "quit    结束\n";
+  cout << " --- Drag teaching and path playback example --- " << endl
+       << "Format <command>[:parameter] e.g. save:track0" << endl << endl
+       << "Command               |  Parameter"        << endl
+       << "power   Power robot on/off   | on|off"      << endl
+       << "mode    Manual/automatic mode | manual|auto" << endl
+       << "drag    Enable/disable drag  | on|off"      << endl
+       << "start   Start recording path |"             << endl
+       << "stop    Stop recording path  |"             << endl
+       << "save    Save path      | path name"      << endl
+       << "cancel  Cancel recording |"             << endl
+       << "query   Query saved paths |"            << endl
+       << "remove  Remove path    | path name"     << endl
+       << "reset   Reset motion buffer |"             << endl
+       << "replay  Replay path    | path name"      << endl
+       << "quit    Quit\n";
 }
 
 /**
- * @brief 处理控制台输入
+ * @brief Handle console input
  */
 char parseInput(std::string &str) {
   size_t delimiter;
@@ -175,7 +176,7 @@ char parseInput(std::string &str) {
 }
 
 /**
- * @brief 等待机器人运动结束
+ * @brief Wait for the robot's motion to finish
  */
 void WaitRobot(BaseRobot *robot) {
   bool running = true;

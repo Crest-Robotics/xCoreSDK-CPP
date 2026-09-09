@@ -1,6 +1,7 @@
 ﻿//
 // Created by arcia on 2025/7/9.
 //
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #ifndef XCORESDK_EXAMPLE_RELEASE_RT_RT_FUNTION_HELPER_HPP_
 #define XCORESDK_EXAMPLE_RELEASE_RT_RT_FUNTION_HELPER_HPP_
@@ -10,15 +11,15 @@
 
 namespace rokae::helper {
  /**
-  * @brief 获取实时状态数据 - 实时模式下的笛卡尔位姿
+  * @brief Get real-time state data - Cartesian pose in real-time mode
   * @param robot instance
-  * @return 笛卡尔位姿 [行优先]
+  * @return Cartesian pose [row-major]
   */
  template<WorkType Wt, unsigned short DoF>
  std::array<double, 16> getCurrentPose_matrix(rokae::Robot_T<Wt, DoF> &robot) {
    std::array<double, 16> pose{};
    try {
-     // 接收状态数据的队列不会自动覆盖旧数据，可以通过循环读取的方法清除旧数据
+     // The queue receiving state data does not automatically overwrite old data; old data can be cleared by reading in a loop
      while (robot.updateRobotState(std::chrono::steady_clock::duration::zero()));
      if (robot.getStateData(RtSupportedFields::tcpPose_m, pose) == 0) {
        return pose;
@@ -28,21 +29,21 @@ namespace rokae::helper {
      std::cerr << e.what();
    }
    error_code ec;
-   // 没有接收实时状态数据，用非实时接口获取
+   // No real-time state data received; retrieve it using the non-real-time interface
    Utils::postureToTransArray(robot.posture(rokae::CoordinateType::flangeInBase, ec), pose);
    return pose;
  }
 
  /**
-  * @brief 获取实时状态数据 - 实时模式下的关节角度
+  * @brief Get real-time state data - joint angles in real-time mode
   * @param robot instance
-  * @return 关节角度 [弧度]
+  * @return Joint angles [radians]
   */
  template<WorkType Wt, unsigned short DoF>
  std::array<double, DoF> getCurrentJointPos(rokae::Robot_T<Wt, DoF> &robot) {
    std::array<double, DoF> joint{};
    try {
-     // 接收状态数据的队列不会自动覆盖旧数据，可以通过循环读取的方法清除旧数据
+     // The queue receiving state data does not automatically overwrite old data; old data can be cleared by reading in a loop
      while (robot.updateRobotState(std::chrono::steady_clock::duration::zero()));
 
      if (robot.getStateData(RtSupportedFields::jointPos_m, joint) == 0) {
@@ -53,7 +54,7 @@ namespace rokae::helper {
      std::cerr << e.what();
    }
    error_code ec;
-   // 没有接收实时状态数据，用非实时接口获取
+   // No real-time state data received; retrieve it using the non-real-time interface
    return robot.jointPos(ec);
  }
 }

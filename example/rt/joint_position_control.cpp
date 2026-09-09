@@ -1,11 +1,13 @@
 ﻿/**
  * @file joint_position_control.cpp
- * @brief 实时模式 - 轴角度控制。程序适用机型：xMateER3
+ * @brief Real-time mode - joint angle control. Applicable robot model: xMateER3
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <iostream>
 #include <cmath>
@@ -22,19 +24,19 @@ using namespace rokae;
 int main() {
   using namespace std;
 
-  // 创建机器人对象
+  // Create the robot object
   rokae::xMateRobot robot;
   std::error_code ec;
 
-  // 连接到机器人
+  // Connect to the robot
   try {
-    robot.connectToRobot("192.168.0.160", "192.168.0.100"); // 本机地址192.168.0.100
+    robot.connectToRobot("192.168.0.160", "192.168.0.100"); // local machine address 192.168.0.100
   } catch (const std::exception &e) {
     print(std::cerr, e.what());
     return 0;
   }
 
-  // 走MoveAbsJ指令到起点
+  // Move to the start point using the MoveAbsJ command
   robot.setMotionControlMode(MotionControlMode::NrtCommand, ec);
   if(ec) {
     std::cerr << "Switch MotionControlMode error: " << ec << std::endl;
@@ -54,7 +56,7 @@ int main() {
   }
   helper::waitRobot(robot);
 
-  // 切换到实时模式
+  // Switch to real-time mode
   robot.setMotionControlMode(MotionControlMode::RtCommand, ec);
   robot.setOperateMode(rokae::OperateMode::automatic, ec);
   robot.setPowerState(true, ec);
@@ -62,20 +64,21 @@ int main() {
   try {
     auto rtCon = robot.getRtMotionController().lock();
 
-    // 可选：设置滤波截止频率。若运动中出现异响、轻微抖动等问题，在排除网络波动、轨迹规划不合适等原因后，
-    // 可设置滤波来平滑指令，缓解异响。数值越低平滑效果越好
+    // Optional: set the filter cutoff frequency. If abnormal noise, slight vibration, or similar issues occur
+    // during motion, after ruling out causes such as network jitter or unsuitable trajectory planning, filtering
+    // can be set to smooth the commands and reduce the noise. The lower the value, the smoother the effect.
     rtCon->setFilterLimit(true, 10);
     rtCon->setFilterFrequency(10, 10, 10, ec);
 
-    // 定义和初始化运动控制时间和角度
+    // Define and initialize the motion control time and angle
     double time = 0;
 
     std::array<double, 6> jntPos{};
 
-    // 定义回调函数
+    // Define the callback function
     std::function<JointPosition()> callback = [&, rtCon](){
       time += 0.001;
-      // 余弦插值型 S 曲线示例
+      // Cosine-interpolation S-curve example
       double delta_angle = M_PI / 20.0 * (1 - std::cos(M_PI / 2.5 * time));
       JointPosition cmd = {{jntPos[0] + delta_angle, jntPos[1] + delta_angle,
                             jntPos[2] - delta_angle,
@@ -83,27 +86,27 @@ int main() {
                             jntPos[5] + delta_angle}};
 
       if(time > 60) {
-        cmd.setFinished(); // 60秒后结束
+        cmd.setFinished(); // finish after 60 seconds
       }
       return cmd;
     };
 
-    // 设置回调函数
+    // Set the callback function
     rtCon->setControlLoop(callback);
-    // 更新起始角度为当前角度
+    // Update the starting angle to the current angle
     jntPos = robot.jointPos(ec);
-    // 开始轴空间位置控制
+    // Start joint-space position control
     rtCon->startMove(RtControllerMode::jointPosition);
-    // 阻塞loop，开始运动
+    // Blocking loop, start motion
     rtCon->startLoop(true);
-    print(std::cout, "控制结束");
+    print(std::cout, "Control finished");
 
-    //将控制模式设为空闲并下电
+    // Set the control mode to idle and power off
     robot.setMotionControlMode(MotionControlMode::Idle, ec);
     robot.setPowerState(false, ec);
 
   } catch (const std::exception &e) {
-    // 捕获异常并打印错误信息
+    // Catch the exception and print the error message
     print(std::cerr, e.what());
     robot.setMotionControlMode(MotionControlMode::Idle, ec);
     robot.setPowerState(false,ec);

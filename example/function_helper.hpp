@@ -2,6 +2,8 @@
 // Created by arcia on 2025/7/9.
 //
 
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
+
 #ifndef XCORESDK_EXAMPLE_RELEASE_FUNCTION_HELPER_HPP_
 #define XCORESDK_EXAMPLE_RELEASE_FUNCTION_HELPER_HPP_
 
@@ -11,7 +13,7 @@
 namespace rokae::helper {
 
  /**
-  * @brief 等待机器人空闲
+  * @brief Wait for the robot to become idle
   */
  void waitRobot(rokae::BaseRobot &robot) {
    using namespace rokae;

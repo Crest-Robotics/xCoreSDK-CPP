@@ -1,11 +1,13 @@
 ﻿/**
  * @file controller_upgrade.cpp
- * @brief 控制器升级, 备份导出示例
+ * @brief Controller upgrade and backup export example
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <iostream>
 #include <chrono>
@@ -19,55 +21,55 @@
 using namespace rokae;
 
 namespace {
- BaseUpgrade upgrader; ///< 升级程序实例
+ BaseUpgrade upgrader; ///< Upgrade program instance
 }
 
 /**
- * @brief 输出格式化当前时间日期
+ * @brief Output the formatted current date and time
  */
 std::string getCurrentDateTime();
 
 /**
- * @brief 示例 - 控制器固件版本升级/恢复控制器备份
+ * @brief Example - Controller firmware upgrade / restore controller backup
  */
 void upgradeController() {
   error_code ec;
 
-  std::cout << "开始升级控制器固件" << std::endl;
-  // 升级该路径下控制器版本
+  std::cout << "Starting controller firmware upgrade" << std::endl;
+  // Upgrade the controller to the version at this path
   upgrader.upgrade(R"(C:\Users\rokae\v3.1.2.rpa)", ec);
   if(ec) {
-    std::cerr << "升级失败: " << ec.message() << std::endl;
+    std::cerr << "Upgrade failed: " << ec.message() << std::endl;
   } else {
-    std::cout << "升级成功" << std::endl;
+    std::cout << "Upgrade succeeded" << std::endl;
   }
 }
 
 /**
- * @brief 示例 - 导出控制器备份
+ * @brief Example - Export controller backup
  */
 void exportControllerBackup() {
   error_code ec;
-  // 保存的文件名 export_[date_time].rpa
+  // Saved file name: export_[date_time].rpa
   std::string export_file_name = "export_" + getCurrentDateTime() + ".rpa";
 
 #if defined(_WIN32) || defined(_WIN64)
-  // 文件保存在当前运行目录下
+  // File is saved in the current working directory
   std::string file_save_path = (std::filesystem::current_path() / export_file_name).string();
 #else
-  // 文件保存在当前运行目录下
+  // File is saved in the current working directory
   std::string file_save_path = "./" + export_file_name;
  #endif
 
-  std::cout << "开始导出控制器备份, 保存到 " << file_save_path << std::endl;
+  std::cout << "Starting controller backup export, saving to " << file_save_path << std::endl;
 
-  // 导出控制器日志和RL工程文件
+  // Export controller logs and RL project files
   upgrader.exportBackup(file_save_path, {
     BackupItem::controllerLog, BackupItem::rlProgram}, ec);
   if(ec) {
-    std::cerr << "导出失败: " << ec.message() << std::endl;
+    std::cerr << "Export failed: " << ec.message() << std::endl;
   } else {
-    std::cout << "导出成功" << std::endl;
+    std::cout << "Export succeeded" << std::endl;
   }
 }
 
@@ -76,10 +78,10 @@ void exportControllerBackup() {
  */
 int main() {
 
-  std::string remote_ip = "192.168.0.160"; // 机器人地址
+  std::string remote_ip = "192.168.0.160"; // Robot address
 
-  // 连接到控制器的升级程序
-  // 可以单独连接，不要求同时连接机器人控制器。不允许多个连接，不允许和示教器同时连接
+  // Connect to the controller's upgrade program
+  // Can be connected independently; there is no requirement to also connect to the robot controller. Multiple connections are not allowed, and connecting at the same time as the teach pendant is not allowed
   try {
     upgrader.connect(remote_ip);
   } catch (std::exception &e) {
@@ -87,21 +89,21 @@ int main() {
     return -1;
   }
 
-  // 运行升级示例
+  // Run the upgrade example
 //  upgradeController();
 
-  // 运行备份导出示例
+  // Run the backup export example
   exportControllerBackup();
 
   return 0;
 }
 
 std::string getCurrentDateTime() {
-  // 获取当前时间点
+  // Get the current time point
   auto now = std::chrono::system_clock::now();
   std::time_t t = std::chrono::system_clock::to_time_t(now);
 
-  // 转换为本地时间
+  // Convert to local time
   std::tm tm_buf;
 #ifdef _WIN32
   localtime_s(&tm_buf, &t); // Windows
@@ -109,7 +111,7 @@ std::string getCurrentDateTime() {
   localtime_r(&t, &tm_buf); // Linux / Unix
 #endif
 
-  // 格式化输出
+  // Format the output
   std::ostringstream oss;
   oss << std::put_time(&tm_buf, "%Y-%m-%d_%H%M%S");
   return oss.str();

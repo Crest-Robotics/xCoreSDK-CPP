@@ -1,12 +1,13 @@
 ﻿/**
  * @file follow_cart_position.cpp
- * @brief 实时模式 - 笛卡尔点位跟随功能
- * 此功能需要使用xMateModel模型库，请设置编译选项XCORE_USE_XMATE_MODEL=ON
+ * @brief Real-time mode - Cartesian waypoint following feature
+ * This feature requires the xMateModel model library; please set the build option XCORE_USE_XMATE_MODEL=ON
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <thread>
 #include <atomic>
@@ -20,9 +21,9 @@ using namespace rokae;
 namespace {
 std::atomic_bool running = true; ///< running state flag
 std::ostream &os = std::cout; ///< print to console
-std::vector<double> q_drag_xm7p = { 0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER Pro拖拽位姿
-std::vector<double> q_drag_er3 = { 0, M_PI/6, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER拖拽位姿
-std::vector<double> q_drag_sr_cr = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 }; ///< SR和CR拖拽位姿
+std::vector<double> q_drag_xm7p = { 0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER Pro drag-teaching pose
+std::vector<double> q_drag_er3 = { 0, M_PI/6, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER drag-teaching pose
+std::vector<double> q_drag_sr_cr = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 }; ///< SR and CR drag-teaching pose
 
 xMateRobot robot;
 }
@@ -32,25 +33,25 @@ void updatePose(rokae::FollowPosition<DoF> &fp, const Eigen::Transform<double, 3
   auto rtCon = robot.getRtMotionController().lock();
   using namespace std::chrono;
   double count = 0;
-  // 比例系数0.2
+  // Scale factor of 0.2
   fp.setScale(0.2);
   auto transform = start;
   while(running) {
     count += 3;
-    // 模拟每秒更新一次位置
+    // Simulate updating the position once per second
     std::this_thread::sleep_for(std::chrono::seconds(1));
     transform.translation().y() = start.translation().y() + 0.4 * sin(M_PI / 2 * count);
     fp.update(transform);
 
     if(rtCon->hasMotionError()) {
-      print(std::cerr, "运动中发生错误");
+      print(std::cerr, "An error occurred during motion");
       running = false;
     }
   }
 }
 
 /**
- * @brief 点位跟随示例
+ * @brief Waypoint following example
  */
 void followCart_Example() {
   using namespace rokae::RtSupportedFields;
@@ -68,14 +69,14 @@ void followCart_Example() {
     return;
   }
 
-  // 可选：设置平滑滤波。建议Windows下运行时设置
+  // Optional: set smoothing filter. Recommended when running under Windows
   rtCon->setFilterFrequency(10, 10, 10, ec);
   rtCon->setFilterLimit(true, 10);
 
-  // 笛卡尔起点
+  // Cartesian starting point
   auto cart_pose = robot.cartPosture(CoordinateType::flangeInBase, ec);
   print(std::cout, "Start from", cart_pose);
-  // 计算出四元数
+  // Compute the quaternion
   auto quaternion = Utils::eulerToQuaternion(cart_pose.rpy);
 
   FollowPosition follow_pose(robot, model);
@@ -84,7 +85,7 @@ void followCart_Example() {
   start_pose.pretranslate(Eigen::Vector3d(cart_pose.trans[0], cart_pose.trans[1], cart_pose.trans[2]));
 
   running = true;
-  print(os, "开始跟随");
+  print(os, "Start following");
   follow_pose.start(start_pose);
   updater = std::thread([&]() {
     updatePose(follow_pose, start_pose);
@@ -92,13 +93,13 @@ void followCart_Example() {
 
   inputer = std::thread([]{
     // press 'q' to stop
-    print(os, "输入'q'结束跟随");
+    print(os, "Enter 'q' to stop following");
     while (getchar() != 'q');
     running = false;
   });
   inputer.detach();
 
-  // 等待结束（出错结束或主动结束）
+  // Wait to finish (either due to an error or a manual stop)
   while(running);
 
   try {
@@ -126,17 +127,17 @@ int main() {
   try {
     robot.connectToRobot(remoteIP, localIP);
   } catch (const std::exception &e) {
-    std::cerr << "连接失败" << e.what();
+    std::cerr << "Connection failed" << e.what();
     return 0;
   }
 
-  // 先运动到合适的起点
+  // Move to a suitable starting point first
   robot.setMotionControlMode(MotionControlMode::NrtCommand, ec);
   if(ec) {
     std::cerr << "Switch MotionControlMode error: " << ec << std::endl;
     return 0;
   }
-  // 根据机型名运动到不同的起始轴角
+  // Move to a different starting joint angle depending on the robot model name
   std::string robot_name = robot.robotInfo(ec).type;
   std::vector<double> start_joint {};
   if(robot_name.find("CR") != std::string::npos || robot_name.find("XMC") != std::string::npos ||
@@ -149,11 +150,11 @@ int main() {
     return 0;
   }
 
-  // 上电
+  // Power on
   robot.setOperateMode(OperateMode::automatic, ec);
   robot.setPowerState(true, ec);
 
-  // 走MoveAbsJ指令到起点
+  // Use the MoveAbsJ command to reach the starting point
   std::string id;
   MoveAbsJCommand absj (start_joint, 100, 0);
   robot.moveAppend(absj, id, ec);
@@ -164,13 +165,13 @@ int main() {
   }
   helper::waitRobot(robot);
 
-  // 切换到实时模式控制
+  // Switch to real-time control mode
   robot.setRtNetworkTolerance(60, ec);
   robot.setMotionControlMode(rokae::MotionControlMode::RtCommand, ec);
   robot.setOperateMode(rokae::OperateMode::automatic, ec);
   robot.setPowerState(true, ec);
 
-  // 启动实时数据接收
+  // Start real-time data reception
   try {
     robot.startReceiveRobotState(std::chrono::milliseconds(1), {jointPos_m});
   } catch (const std::exception &e) {
@@ -178,10 +179,10 @@ int main() {
     return 0;
   }
 
-  // 执行笛卡尔点位跟随
+  // Run the Cartesian waypoint following example
   followCart_Example();
 
-  // 运动结束，关闭实时模式，下电
+  // Motion finished, disable real-time mode, power off
   robot.setMotionControlMode(rokae::MotionControlMode::Idle, ec);
   robot.setPowerState(false, ec);
   robot.setOperateMode(rokae::OperateMode::manual, ec);

@@ -1,12 +1,13 @@
 ﻿/**
  * @file follow_joint_position.cpp
- * @brief 实时模式 - 关节点位跟随功能
- * 此功能需要使用xMateModel模型库，请设置编译选项XCORE_USE_XMATE_MODEL=ON
+ * @brief Real-time mode - Joint waypoint following feature
+ * This feature requires the xMateModel model library; please set the build option XCORE_USE_XMATE_MODEL=ON
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <thread>
 #include <atomic>
@@ -16,10 +17,10 @@
 
 std::atomic_bool running = true; ///< running state flag
 std::ostream &os = std::cout; ///< print to console
-std::vector<double> q_drag_xm7p = { 0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER Pro拖拽位姿
-std::vector<double> q_drag_er3 = { 0, M_PI/6, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER拖拽位姿
-std::vector<double> q_drag_cr7 = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 }; ///< CR拖拽位姿
-std::vector<double> q_drag_sr3 = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 }; ///< SR拖拽位姿
+std::vector<double> q_drag_xm7p = { 0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER Pro drag-teaching pose
+std::vector<double> q_drag_er3 = { 0, M_PI/6, M_PI/3, 0, M_PI/2, 0 }; ///< xMateER drag-teaching pose
+std::vector<double> q_drag_cr7 = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 }; ///< CR drag-teaching pose
+std::vector<double> q_drag_sr3 = { 0, M_PI/6, -M_PI_2, 0, -M_PI/3, 0 }; ///< SR drag-teaching pose
 
 std::vector<std::array<double, 6>> points_xMateSR3();
 std::vector<std::array<double, 6>> points_xMateER3();
@@ -27,7 +28,7 @@ std::vector<std::array<double, 6>> points_xMateCR();
 std::vector<std::array<double, 7>> points_xMateERPro();
 
 /**
- * @brief 跟随关节点位-6轴
+ * @brief Follow joint waypoints - 6-axis
  */
 void example_followPosition6(rokae::xMateRobot& robot,
                              const std::vector<double>& start_jnt,
@@ -39,8 +40,8 @@ void example_followPosition6(rokae::xMateRobot& robot,
     auto model = robot.model();
     rokae::FollowPosition follow_pose(robot, model);
 
-    print(os, "开始跟随, [q]结束");
-    // 起点根据需要设置，不要求是当前位置
+    print(os, "Start following, [q] to stop");
+    // Set the starting point as needed; it does not have to be the current position
     follow_pose.start(robot.jointPos(ec));
 
     updater = std::thread([&]() {
@@ -48,7 +49,7 @@ void example_followPosition6(rokae::xMateRobot& robot,
       follow_pose.setScale(2);
       auto it = points_list.begin();
       while (running) {
-        // 模拟每600ms更新一次位置
+        // Simulate updating the position once every 600ms
         while (running) {
           follow_pose.update(*it++);
           std::this_thread::sleep_for(std::chrono::milliseconds(600));
@@ -85,29 +86,29 @@ void example_followPosition6(rokae::xMateRobot& robot,
     }
   }
 
-  // 运动结束，将控制模式设为空闲并下电
+  // Motion finished; set the control mode to idle and power off
   robot.setMotionControlMode(rokae::MotionControlMode::Idle, ec);
   robot.setOperateMode(rokae::OperateMode::manual, ec);
   robot.setPowerState(false, ec);
 }
 
 /**
- * @brief 跟随关节点位-7轴
+ * @brief Follow joint waypoints - 7-axis
  */
 void example_followPosition7(rokae::xMateErProRobot &robot,
                              const std::vector<double> &start_jnt,
                              const std::vector<std::array<double, 7>> &points_list) {
-  //获取运动控制器
+  //Get the motion controller
   auto rtCon = robot.getRtMotionController().lock();
-  //初始化线程和错误代码
+  //Initialize the thread and error code
   std::thread updater;
   error_code ec;
   try {
-    //创建跟随位置对象
+    //Create the follow-position object
     auto model = robot.model();
     rokae::FollowPosition follow_pose(robot, model);
 
-    print(os, "开始跟随, [q]结束");
+    print(os, "Start following, [q] to stop");
     follow_pose.start(robot.jointPos(ec));
 
     updater = std::thread([&]() {
@@ -115,7 +116,7 @@ void example_followPosition7(rokae::xMateErProRobot &robot,
       follow_pose.setScale(2);
       auto it = points_list.begin();
       while(running) {
-        // 模拟每600ms更新一次位置
+        // Simulate updating the position once every 600ms
         while (running) {
           follow_pose.update(*it++);
           std::this_thread::sleep_for(std::chrono::milliseconds (600));
@@ -150,9 +151,9 @@ void example_followPosition7(rokae::xMateErProRobot &robot,
       updater.join();
     }
   }
-  print(std::cout, "跟随结束");
+  print(std::cout, "Following finished");
 
-  // 运动结束，将控制模式设为空闲并下电
+  // Motion finished; set the control mode to idle and power off
   robot.setMotionControlMode(rokae::MotionControlMode::Idle, ec);
   robot.setPowerState(false, ec);
 }
@@ -182,10 +183,10 @@ int main() {
   std::vector<double> start_joint;
   decltype(points_xMateCR()) point_list ;
   auto robot_info = robot.robotInfo(ec);
-  std::string robot_name = robot_info.type; // 获取机型名
+  std::string robot_name = robot_info.type; // Get the robot model name
 
-  // 根据机型不同，适用的点位也不同，下方列出本示例测试过的机型
-  // 其它机型建议重新适配点位，确认机械臂运动在安全的区域
+  // Applicable waypoints differ by robot model; the models tested for this example are listed below
+  // For other models, it is recommended to re-adapt the waypoints and confirm the arm moves within a safe area
   // xMateCR7/xMateCR12
   if(robot_name.find("CR7") != std::string::npos || robot_name.find("CR12") != std::string::npos ||
     robot_name.find("XMC7") != std::string::npos || robot_name.find("XMC12") != std::string::npos) {
@@ -207,16 +208,16 @@ int main() {
   else if (robot_name.find("Pro")!=std::string::npos){
     start_joint = q_drag_xm7p;
   } else {
-    print(std::cerr, "示例程序中的点位尚未在该机型上使用过");
+    print(std::cerr, "The waypoints in this example have not been used on this robot model yet");
   }
 
-  // 先执行MoveAbsJ指令运动到合适的起点
+  // First execute the MoveAbsJ command to move to a suitable starting point
   robot.setMotionControlMode(MotionControlMode::NrtCommand, ec);
   if(ec) {
     std::cerr << "Switch MotionControlMode error: " << ec << std::endl;
     return 0;
   }
-  // 上电
+  // Power on
   robot.setOperateMode(OperateMode::automatic, ec);
   robot.setPowerState(true, ec);
 
@@ -232,18 +233,18 @@ int main() {
     std::cerr << "MoveStart error: " << ec << std::endl;
     return 0;
   }
-  helper::waitRobot(robot); // 等待运动结束
+  helper::waitRobot(robot); // Wait for motion to finish
 
-  // 设置通信阈值
+  // Set the communication tolerance
   robot.setRtNetworkTolerance(20, ec);
-  // 切换到实时模式控制
+  // Switch to real-time control mode
   robot.setMotionControlMode(rokae::MotionControlMode::RtCommand, ec);
   robot.setOperateMode(rokae::OperateMode::automatic, ec);
   robot.setPowerState(true, ec);
 
   try {
     auto rtCon = robot.getRtMotionController().lock();
-    // 接收实时状态数据
+    // Receive real-time state data
     robot.startReceiveRobotState(std::chrono::milliseconds(1), {jointPos_m});
   } catch (const std::exception &e) {
     std::cerr << e.what();
@@ -262,7 +263,7 @@ int main() {
 
 
 /**
- * @brief 适用于xMateCR7/12的轴角度
+ * @brief Joint angles applicable to xMateCR7/12
  */
 std::vector<std::array<double, 6>> points_xMateCR() {
   return {
@@ -278,7 +279,7 @@ std::vector<std::array<double, 6>> points_xMateCR() {
 }
 
 /**
- * @brief 适用于SR3 & SR4的轴角度
+ * @brief Joint angles applicable to SR3 & SR4
  */
 std::vector<std::array<double, 6>> points_xMateSR3() {
   return {
@@ -296,7 +297,7 @@ std::vector<std::array<double, 6>> points_xMateSR3() {
 }
 
 /**
- * @brief 适用于xMateER3/7 Pro的轴角度
+ * @brief Joint angles applicable to xMateER3/7 Pro
  */
 std::vector<std::array<double, (unsigned short)7>> points_xMateERPro() {
   return {
@@ -312,7 +313,7 @@ std::vector<std::array<double, (unsigned short)7>> points_xMateERPro() {
 }
 
 /**
- * @brief 适用于xMateER3/7的轴角度
+ * @brief Joint angles applicable to xMateER3/7
  */
 std::vector<std::array<double, 6>> points_xMateER3() {
   return {

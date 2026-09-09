@@ -1,12 +1,13 @@
 ﻿/**
  * @file xmatemodel_er3_er7p.cpp
- * @brief xMate运动学和动力学计算库，以xMate3和xMateEr7Pro为例
- * 此示例需要使用xMateModel模型库，请设置编译选项XCORE_USE_XMATE_MODEL=ON
+ * @brief xMate kinematics and dynamics computation library, using xMate3 and xMateEr7Pro as examples
+ * This example requires the xMateModel model library; please set the build option XCORE_USE_XMATE_MODEL=ON
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include "rokae/robot.h"
 #include "print_helper.hpp"
@@ -18,7 +19,7 @@ using namespace rokae;
 ostream &os = std::cout; ///< print to console
 
 /**
- * @brief xMateER7 Pro示例
+ * @brief xMateER7 Pro example
  */
 void xMateErPro7_model(xMateModel<7> &model) {
   try {
@@ -45,7 +46,7 @@ void xMateErPro7_model(xMateModel<7> &model) {
     auto pos = model.getCartPose(jointPos_in);
     print(os, "Flange posture -", pos);
 
-    model.setTcpCoor(F_TO_EE, EE_TO_K); // 设置末端执行器坐标
+    model.setTcpCoor(F_TO_EE, EE_TO_K); // Set the end-effector coordinate frame
     auto pos_e = model.getCartPose(jointPos_in, SegmentFrame::endEffector);
     print(os, "EE posture -", pos_e);
 
@@ -65,7 +66,7 @@ void xMateErPro7_model(xMateModel<7> &model) {
     pos = model.getCartPose(array1);
     print(os, "FK calculation -", pos);
 
-    // 设置负载
+    // Set the load
     double load_mass = 1.0;
     std::array<double, 3> load_centre = {0.1, 0.1, 0.1}, load_inertia = {3.0, 2.0, 5.0};
     model.setLoad(load_mass, load_centre, load_inertia);
@@ -76,7 +77,7 @@ void xMateErPro7_model(xMateModel<7> &model) {
 }
 
 /**
- * @brief xMateER3示例
+ * @brief xMateER3 example
  */
 void xMateEr3_model(xMateModel<6> &model) {
   try {
@@ -101,7 +102,7 @@ void xMateEr3_model(xMateModel<6> &model) {
     auto pos = model.getCartPose(jointPos_in);
     print(os, "Flange posture -", pos);
 
-    model.setTcpCoor(F_TO_EE, EE_TO_K); // 设置末端执行器坐标
+    model.setTcpCoor(F_TO_EE, EE_TO_K); // Set the end-effector coordinate frame
     auto pos_e = model.getCartPose(jointPos_in, SegmentFrame::endEffector);
     print(os, "EE posture -", pos_e);
 
@@ -121,7 +122,7 @@ void xMateEr3_model(xMateModel<6> &model) {
     pos = model.getCartPose(array1);
     print(os, "FK calculation -", pos);
 
-    // 设置负载
+    // Set the load
     double load_mass = 2.0;
     std::array<double, 3> load_centre = {0.1, 0.1, 0.1}, load_inertia = {3.0, 2.0, 5.0};
     model.setLoad(load_mass, load_centre, load_inertia);
@@ -141,11 +142,11 @@ int main() {
 
     if(test_Er3) {
       rokae::xMateRobot robot(ip); // ****   xMate 6-axis
-      auto model = robot.model(); // 返回xMateModel类
+      auto model = robot.model(); // Returns an xMateModel instance
       xMateEr3_model(model);
     } else {
       rokae::xMateErProRobot robot(ip);
-      auto model = robot.model(); // 返回xMateModel类
+      auto model = robot.model(); // Returns an xMateModel instance
       xMateErPro7_model(model);
     }
   }  catch (const std::exception &e) {

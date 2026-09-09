@@ -1,11 +1,13 @@
 ﻿/**
  * @file joint_s_line.cpp
- * @brief 实时模式 - 轴空间S规划。程序适用机型xMateER7 Pro
+ * @brief Real-time mode - joint-space S-curve planning. Applicable robot model: xMateER7 Pro
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <iostream>
 #include <cmath>
@@ -21,9 +23,9 @@ using namespace rokae;
 int main() {
   rokae::xMateErProRobot robot;
   try {
-    robot.connectToRobot("192.168.0.160", "192.168.0.100"); // 本机地址192.168.0.100
+    robot.connectToRobot("192.168.0.160", "192.168.0.100"); // local machine address 192.168.0.100
   } catch(const std::exception &e) {
-    std::cerr << "连接失败 " << e.what();
+    std::cerr << "Connection failed " << e.what();
     return -1;
   }
 
@@ -35,10 +37,10 @@ int main() {
   std::shared_ptr<RtMotionControlCobot<7>> rtCon;
   try {
     rtCon = robot.getRtMotionController().lock();
-    // 设置要接收数据
+    // Set up the data to receive
     robot.startReceiveRobotState(std::chrono::milliseconds(1), {RtSupportedFields::jointPos_m});
   } catch(const std::exception &e) {
-    std::cerr << "初始化实时控制失败" << e.what();
+    std::cerr << "Failed to initialize real-time control" << e.what();
     return -1;
   }
 
@@ -47,7 +49,7 @@ int main() {
 
   double time = 0;
 
-  // 6个目标点
+  // 6 target points
   std::vector<std::array<double, 7>> jntTargets = {
     {0, M_PI/6, 0, M_PI/3, 0, M_PI_2, 0},
     {0, -0.078, 0, 1.836, 0, 1.003, 0},
@@ -59,23 +61,23 @@ int main() {
   auto it = jntTargets.begin();
 
   std::function<JointPosition(void)> callback = [&, rtCon]() {
-    time += 0.001; // 按1ms为周期规划
+    time += 0.001; // plan with a 1ms control cycle
 
     JointMotionGenerator joint_s(0.8, *it);
     joint_s.calculateSynchronizedValues(jntPos);
 
-    // 获取每个周期计算的角度偏移
+    // Get the angle offset computed for each control cycle
     if (!joint_s.calculateDesiredValues(time, delta)) {
       for(unsigned i = 0; i < cmd.joints.size(); ++i) {
         cmd.joints[i] = jntPos[i] + delta[i];
       }
     } else {
-      // 已到达一个目标点，开始运动到下一个目标点
+      // Reached one target point, start moving to the next target point
       if (++it == jntTargets.end()) {
         cmd.setFinished();
       }
       time = 0;
-      // 最后的角度值作为下一个规划的起始点
+      // Use the final angle value as the starting point for the next planning
       std::copy(cmd.joints.begin(), cmd.joints.end(), jntPos.begin());
     }
     return cmd;
@@ -83,15 +85,15 @@ int main() {
 
   try {
     rtCon->setControlLoop(callback);
-    // 更新回调的起始位置
+    // Update the callback's starting position
     jntPos = robot.jointPos(ec);
-    // 开始运动前先设置为轴空间位置控制
+    // Set to joint-space position control before starting motion
     rtCon->startMove(RtControllerMode::jointPosition);
     rtCon->startLoop(true);
-    print(std::cout, "控制结束");
+    print(std::cout, "Control finished");
 
   } catch (const std::exception &e) {
-    print(std::cerr, "实时运动错误", e.what());
+    print(std::cerr, "Real-time motion error", e.what());
   }
 
   return 0;

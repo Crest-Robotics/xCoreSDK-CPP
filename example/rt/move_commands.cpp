@@ -1,13 +1,16 @@
 ﻿/**
  * @file move_commands.cpp
- * @brief 实时模式 - S规划MoveJ & MoveL & MoveC
- * @attention 实时模式的MoveJ/MoveL/MoveC已不建议使用，请使用非实时模式下的MoveAbsJCommand/MoveLCommand/MoveCCommand。
- * 本示例仅作调用方法展示
+ * @brief Real-time mode - S-curve planning MoveJ & MoveL & MoveC
+ * @attention MoveJ/MoveL/MoveC in real-time mode are no longer recommended; please use
+ * MoveAbsJCommand/MoveLCommand/MoveCCommand in non-real-time mode instead.
+ * This example only demonstrates how to call these functions.
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <cmath>
 #include <iostream>
@@ -28,19 +31,20 @@ int main() {
     std::error_code ec;
     rokae::xMateErProRobot robot(ip, "192.168.0.180"); // ****   XMate 7-axis
     robot.setOperateMode(rokae::OperateMode::automatic,ec);
-    // 若程序运行时控制器已经是实时模式，需要先切换到非实时模式后再更改网络延迟阈值，否则不生效
+    // If the controller is already in real-time mode when the program runs, switch to non-real-time mode
+    // first before changing the network latency threshold, otherwise it will not take effect
     robot.setRtNetworkTolerance(20, ec);
     robot.setMotionControlMode(MotionControlMode::RtCommand, ec);
     robot.setPowerState(true, ec);
 
     auto rtCon = robot.getRtMotionController().lock();
 
-    // 示例程序使用机型: xMateER7 Pro
-    // 1. 从当前位置MoveJ运动到拖拽位置
+    // Example program uses robot model: xMateER7 Pro
+    // 1. MoveJ from the current position to the drag-teach position
     std::array<double, 7> q_drag_xm7p = {0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0};
     rtCon->MoveJ(0.5, robot.jointPos(ec), q_drag_xm7p);
 
-    // 2. 圆弧运动 (X-Y平面上)
+    // 2. Circular arc motion (on the X-Y plane)
     CartesianPosition start, aux, target;
     Utils::postureToTransArray(robot.posture(rokae::CoordinateType::flangeInBase, ec), start.pos);
     Eigen::Matrix3d rot_start;
@@ -55,12 +59,12 @@ int main() {
     Utils::transMatrixToArray(rot_start, trans_end, target.pos);
     rtCon->MoveC(0.2, start, aux, target);
 
-    // 3. 直线运动
+    // 3. Linear motion
     Utils::postureToTransArray(robot.posture(rokae::CoordinateType::flangeInBase, ec), start.pos);
     Utils::arrayToTransMatrix(start.pos, rot_start, trans_start);
 
     trans_end = trans_start;
-    // 沿 x-0.1m, y-0.3m, z-0.25
+    // Along x-0.1m, y-0.3m, z-0.25
     trans_end[0] -= 0.1;
     trans_end[1] -= 0.3;
     trans_end[2] -= 0.25;
@@ -69,7 +73,7 @@ int main() {
     print(std::cout, "MoveL start position:", start.pos, "Target:", target.pos);
     rtCon->MoveL(0.3, start, target);
 
-    // 4. 关闭实时模式
+    // 4. Turn off real-time mode
     robot.setMotionControlMode(rokae::MotionControlMode::NrtCommand, ec);
     robot.setOperateMode(rokae::OperateMode::manual, ec);
 

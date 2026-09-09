@@ -1,11 +1,12 @@
 ﻿/**
  * @file cartesian_impedance_control.cpp
- * @brief 实时模式 - 笛卡尔阻抗控制
+ * @brief Real-time mode - Cartesian impedance control
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <iostream>
 #include <cmath>
@@ -24,8 +25,8 @@ using namespace rokae;
 int main() {
   using namespace std;
   rokae::xMateErProRobot robot; // ****   xMate 7-axis
-  std::string robot_ip = "192.168.0.160"; // 机器人地址
-  std::string local_ip = "192.168.0.100"; // 本机地址
+  std::string robot_ip = "192.168.0.160"; // robot address
+  std::string local_ip = "192.168.0.100"; // local address
   std::error_code ec;
 
   try {
@@ -35,17 +36,17 @@ int main() {
     return 0;
   }
 
-  // 关闭实时模式
+  // Disable real-time mode
   robot.setMotionControlMode(rokae::MotionControlMode::NrtCommand, ec);
   if(ec) {
     std::cerr << "Set motion control mode failed " << ec.message() << std::endl;
     return 0;
   }
-  // 自动模式，上电
+  // Automatic mode, power on
   robot.setOperateMode(rokae::OperateMode::automatic, ec);
   robot.setPowerState(true, ec);
 
-  // 先运动到起始位置, xMate Pro机型的拖拽位姿
+  // Move to the starting position first, the drag-teaching pose for xMate Pro models
   MoveAbsJCommand start_joint({0, M_PI/6, 0, M_PI/3, 0, M_PI/2, 0}, 200, 0);
   std::string id;
   robot.moveAppend(start_joint, id, ec);
@@ -54,12 +55,12 @@ int main() {
     std::cerr << "Move failed " << ec.message() << std::endl;
     return 0;
   }
-  // 等待运动结束
+  // Wait for motion to finish
   helper::waitRobot(robot);
 
-  // 设置实时模式网络阈值50%。需要在启动实时模式之前设置
+  // Set the real-time mode network tolerance to 50%. Must be set before starting real-time mode
   robot.setRtNetworkTolerance(50, ec);
-  // 切换到实时模式, 上电
+  // Switch to real-time mode, power on
   robot.setMotionControlMode(MotionControlMode::RtCommand, ec);
   robot.setOperateMode(rokae::OperateMode::automatic,ec);
   robot.setPowerState(true, ec);
@@ -73,68 +74,68 @@ int main() {
     return 0;
   }
 
-  // 设置力控坐标系为工具坐标系, 末端相对法兰的坐标系
+  // Set the force control coordinate system to the tool frame, the end-effector frame relative to the flange
   std::array<double, 16> toolToFlange = {0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1};
   rtCon->setFcCoor(toolToFlange, FrameType::tool, ec);
-  // 设置笛卡尔阻抗系数
+  // Set the Cartesian impedance coefficients
   rtCon->setCartesianImpedance({1200, 1200, 0, 100, 100, 0}, ec);
-  // 设置X和Z方向3N的期望力
+  // Set the desired force of 3N in the X and Z directions
   rtCon->setCartesianImpedanceDesiredTorque({3, 0, 3, 0, 0, 0}, ec);
 
   try {
-    // 切换到实时模式控制之后，再开始接收状态数据，确保读到的数据是实时模式下的
+    // Start receiving state data only after switching to real-time control mode, to ensure the data read is from real-time mode
     robot.startReceiveRobotState(std::chrono::milliseconds(8), {RtSupportedFields::tcpPose_m});
   } catch (const std::exception &e) {
     std::cerr << "Start receive robot state failed " << e.what() << std::endl;
     return 0;
   }
-  // 获取实时模式用的当前笛卡尔位姿，作为起点
+  // Get the current Cartesian pose for real-time mode, as the starting point
   std::array<double, 16> init_position = helper::getCurrentPose_matrix(robot);
-  std::cout << "初始位置: " << init_position << std::endl;
+  std::cout << "Initial position: " << init_position << std::endl;
 
-  // 记录规划到第几个周期了（也就是第几个毫秒）
+  // Track which control cycle the planning has reached (i.e., which millisecond)
   double time = 0;
 
   std::atomic<bool> stopManually {true};
-  // 定义回调函数，内容是每周期要执行的计算，返回计算出的笛卡尔指令
+  // Define the callback function, containing the computation to perform each cycle, returning the computed Cartesian command
   std::function<CartesianPosition(void)> callback = [&, rtCon]()->CartesianPosition{
-    time += 0.001; // 由于控制周期固定是1kHz,所以这个时间每次固定增加0.001s
+    time += 0.001; // Since the control period is fixed at 1kHz, this time is incremented by a fixed 0.001s each cycle
 
-    // 示例: 基于余弦函数的平滑 S 曲线位移规划
-    constexpr double kRadius = 0.2; // 最大位移幅度是0.2m
+    // Example: smooth S-curve displacement planning based on a cosine function
+    constexpr double kRadius = 0.2; // Maximum displacement amplitude is 0.2m
 
-    // 初始速度为 0, 最终速度为 0, 中间加速-减速过程平滑，符合余弦加加速度（jerk）连续的轨迹规划。
+    // Initial velocity is 0, final velocity is 0; the intermediate acceleration-deceleration process is smooth, conforming to trajectory planning with continuous cosine jerk.
     double angle = M_PI / 4 * (1 - std::cos(M_PI / 2 * time));
-    // 随 angle 的变化走一个半周期余弦波形，形成光滑的上下运动。
+    // As angle changes, it traces a half-period cosine waveform, forming smooth up-and-down motion.
     double delta_z = kRadius * (std::cos(angle) - 1);
 
     CartesianPosition output{};
     output.pos = init_position;
-    // 把每个周期变化量叠加在起始位姿上
+    // Add the per-cycle change onto the starting pose
     output.pos[7] += delta_z;
 
-    // 持续运行40秒
+    // Run continuously for 40 seconds
     if(time > 40){
-      std::cout << "运动结束" <<std::endl;
-      output.setFinished(); // 表明返回的cmd是最后一条指令
-      stopManually.store(false); // loop为非阻塞，和主线程同步停止状态
+      std::cout << "Motion finished" <<std::endl;
+      output.setFinished(); // Indicates that the returned cmd is the last command
+      stopManually.store(false); // The loop is non-blocking, sync the stop state with the main thread
     }
     return output;
   };
 
   try {
     rtCon->setControlLoop(callback);
-    // 开始笛卡尔阻抗控制
+    // Start Cartesian impedance control
     rtCon->startMove(RtControllerMode::cartesianImpedance);
     rtCon->startLoop(false);
     while (stopManually.load());
-    // 非阻塞loop, 需要调用一次停止循环
+    // Non-blocking loop, need to call stop loop once
     rtCon->stopLoop();
   } catch (const std::exception &e) {
     std::cerr << "RT move error occur " << e.what() << std::endl;
   }
 
-  // 下电，关闭实时模式
+  // Power off, disable real-time mode
   robot.setPowerState(false, ec);
   robot.setOperateMode(OperateMode::manual, ec);
   robot.setMotionControlMode(MotionControlMode::Idle, ec);

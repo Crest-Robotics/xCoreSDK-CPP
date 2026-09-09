@@ -1,11 +1,13 @@
 ﻿/**
  * @file sdk_example.cpp
- * @brief SDK各接口使用示例
+ * @brief Usage examples for the various SDK interfaces
  *
  * @copyright Copyright (C) 2025 ROKAE (Beijing) Technology Co., LTD. All Rights Reserved.
  * Information in this file is the intellectual property of Rokae Technology Co., Ltd,
  * And may contains trade secrets that must be stored and viewed confidentially.
  */
+
+// Note: Comments and console messages in this file were translated from Chinese to English by Claude Code.
 
 #include <iostream>
 #include <thread>
@@ -20,29 +22,29 @@ std::ostream &os = std::cout; ///< print to console
 namespace Workflow {
 
  /**
-  * @brief 示例 - 工具/工件/基坐标系标定
+  * @brief Example - tool/workpiece/base frame calibration
   */
  template<WorkType Wt, unsigned short DoF>
  class CalibrateFrame {
   public:
    /**
     * @brief Constructor
-    * @param robot 已创建好的机器人类
-    * @param type 标定坐标系
-    * @param point_num 传入的位置数量，对应N点法
-    * @param is_held 是否机器人手持
-    * @param base_aux 基坐标系标定辅助点
+    * @param robot An already-created robot instance
+    * @param type The frame type to calibrate
+    * @param point_num The number of positions to be provided, corresponding to the N-point method
+    * @param is_held Whether the robot is hand-held
+    * @param base_aux Auxiliary points for base frame calibration
     */
    CalibrateFrame(Robot_T<Wt,DoF> &robot, FrameType type, int point_num, bool is_held, const std::array<double, 3> &base_aux = {})
      : robot_(&robot), type_(type), point_list_(point_num), is_held_(is_held), base_aux_(base_aux) {}
 
    /**
-    * @brief 设置标定点
+    * @brief Set a calibration point
     */
    void setPoint(unsigned point_index) {
      if(point_index >= point_list_.size()) {
-       // 自行添加异常处理
-       print(std::cerr, "标定点下标超出范围");
+       // Add your own exception handling here
+       print(std::cerr, "Calibration point index out of range");
        return;
      }
      error_code ec;
@@ -51,9 +53,9 @@ namespace Workflow {
    }
 
    /**
-    * @brief 所有标定位置已确认，得到标定结果
-    * @param ec 标定结果错误码
-    * @return 标定结果
+    * @brief All calibration positions have been confirmed; obtain the calibration result
+    * @param ec Calibration result error code
+    * @return Calibration result
     */
    FrameCalibrationResult confirm(error_code &ec) {
      return robot_->calibrateFrame(type_, point_list_, is_held_, ec, base_aux_);
@@ -68,19 +70,19 @@ namespace Workflow {
  };
 
  /**
-  * @brief 示例 - 机械臂超出软限位后Jog回到限位内
+  * @brief Example - Jog the arm back within its soft limits after it exceeds them
   */
  template<WorkType Wt, unsigned short DoF>
  void recoveryFromOverJointRange(Robot_T<Wt, DoF> *robot) {
    error_code ec;
    auto curr_joint = robot->jointPos(ec);
    std::array<double[2], DoF> soft_limits {};
-   // 读取当前软限位设置
+   // Read the current soft limit settings
    robot->getSoftLimit(soft_limits, ec);
 
    std::array<double, DoF> jog_steps {};
    bool outofRange = false;
-   // 将超出限位的轴Jog到软限位内±0.08rad (约5度)
+   // Jog any axis that exceeds its limit back within the soft limit by ±0.08 rad (about 5 degrees)
    double margin = 0.08;
    for(unsigned i = 0; i < DoF; ++i) {
      if(curr_joint[i] > soft_limits[i][1]) {
@@ -93,18 +95,18 @@ namespace Workflow {
      }
    }
    if(!outofRange) {
-     print(std::cout, "当前轴角度处于软限位内，无需恢复");
+     print(std::cout, "Current joint angles are within the soft limits; no recovery needed");
      return;
    }
 
-   // 下电后, 关闭软限位
+   // After powering off, disable the soft limits
    robot->setPowerState(false, ec);
    robot->setOperateMode(OperateMode::manual, ec);
    robot->setSoftLimit(false, ec);
    robot->setPowerState(true, ec);
 
-   // 依次Jog各轴
-   double rate = 0.2; // Jog速率
+   // Jog each axis in turn
+   double rate = 0.2; // Jog rate
    for(unsigned i = 0; i < DoF; ++i) {
      if(jog_steps[i] != 0) {
        robot->startJog(JogOpt::Space::jointSpace, rate, Utils::radToDeg(abs(jog_steps[i])), i,
@@ -122,80 +124,80 @@ namespace Workflow {
    }
    robot->stop(ec);
    robot->setPowerState(false, ec);
-   // 重新打开软限位
+   // Re-enable the soft limits
    robot->setSoftLimit(true, ec);
  }
 }
 
 /**
- * @brief 示例 - 标定工具/工件坐标系
+ * @brief Example - calibrate the tool/workpiece frame
  */
 template<WorkType Wt, unsigned short DoF>
 void example_calibrateFrame(Robot_T<Wt, DoF> *robot) {
   int point_count = 4;
   Workflow::CalibrateFrame calibrate_frame(*robot, FrameType::tool, point_count, true);
   for(int i = 0; i < point_count; i++) {
-    print(std::cout, "将机器人Jog到标定点，按回车确认");
+    print(std::cout, "Jog the robot to the calibration point, then press Enter to confirm");
     while(getchar() != '\n');
     calibrate_frame.setPoint(i);
   }
   error_code ec;
   FrameCalibrationResult calibrate_result = calibrate_frame.confirm(ec);
   if(ec) {
-    print(std::cerr, "标定失败:", ec);
+    print(std::cerr, "Calibration failed:", ec);
   } else {
-    print(std::cout, "标定成功，结果 -", calibrate_result.frame, "\n偏差:", calibrate_result.errors);
+    print(std::cout, "Calibration succeeded, result -", calibrate_result.frame, "\nDeviation:", calibrate_result.errors);
   }
 }
 
 /**
- * @brief 示例 - 计算正逆解
+ * @brief Example - compute forward/inverse kinematics
  */
 template <WorkType wt, unsigned short dof>
 void example_coordinateCalculation(Robot_T<wt, dof> *robot){
   error_code ec;
   auto tcp_xyzabc = robot->posture(CoordinateType::endInRef, ec);
-  // *** 计算逆解 & 正解 ***
-  //设置工具坐标
+  // *** Compute inverse & forward kinematics ***
+  //set the tool frame
   Toolset toolset1;
   toolset1 = robot->toolset(ec);
-  print(os, "从控制器读取的工具工件坐标系:", toolset1);
+  print(os, "Tool/workpiece frame read from the controller:", toolset1);
   auto model = robot->model();
 
-  // 当前设置的工具工件坐标系下计算逆解
+  // Compute the inverse kinematics under the currently configured tool/workpiece frame
   model.calcIk(tcp_xyzabc, ec);
-  // toolset1下计算逆解
+  // Compute the inverse kinematics under toolset1
   auto ik = model.calcIk(tcp_xyzabc, toolset1, ec);
-  // 当前设置的工具工件坐标系下计算正解
+  // Compute the forward kinematics under the currently configured tool/workpiece frame
   model.calcFk(ik, ec);
-  // toolset1下计算正解
+  // Compute the forward kinematics under toolset1
   auto fk_ret = model.calcFk(ik, toolset1, ec);
-  print(os, "目前的运动学逆解：", ik);
-  print(os, "运动学正解：", fk_ret);
+  print(os, "Current inverse kinematics solution:", ik);
+  print(os, "Forward kinematics solution:", fk_ret);
 
-  //*** 坐标系转换： 末端相对于外部参考 & 法兰相对于基坐标 ***
-  //查询基坐标设置
+  //*** Frame conversion: end-effector relative to external reference & flange relative to base ***
+  //query the base frame configuration
   auto base_in_world = robot->baseFrame(ec);
   auto flan_in_base =Utils::EndInRefToFlanInBase(base_in_world, toolset1, tcp_xyzabc);
   auto flan_pos = robot->posture(CoordinateType::flangeInBase, ec);
   auto end_in_ref = Utils::FlanInBaseToEndInRef(base_in_world, toolset1, flan_pos);
 
-  print(os, "输入末端相对外部参考坐标系位姿", tcp_xyzabc);
-  print(os, "计算得到的末端相对外部参考坐标系位姿", end_in_ref);
-  print(os, "输入的法兰相对基坐标系位姿", flan_pos);
-  print(os, "计算得到法兰相对基坐标系位姿", flan_in_base);
+  print(os, "Input end-effector pose relative to the external reference frame", tcp_xyzabc);
+  print(os, "Computed end-effector pose relative to the external reference frame", end_in_ref);
+  print(os, "Input flange pose relative to the base frame", flan_pos);
+  print(os, "Computed flange pose relative to the base frame", flan_in_base);
 
-  // 计算所有逆解示例
-  // 对当前的法兰相对基坐标系进行偏移，计算偏移后位姿的所有逆解
+  // Example of computing all inverse kinematics solutions
+  // Offset the current flange-relative-to-base pose and compute all inverse kinematics solutions for the offset pose
   auto cart_pos = robot->cartPosture(CoordinateType::flangeInBase, ec);
   cart_pos.trans[1] += 0.05;
   cart_pos.rpy[0] += Utils::degToRad(20);
   std::vector<std::vector<int>> calc_confs;
   auto ik_solutions = model.calcAllIkSolutions(cart_pos, calc_confs, ec);
   if(ec) {
-    print(os, "计算逆解失败:", ec);
+    print(os, "Failed to compute inverse kinematics:", ec);
   } else {
-    print(os, "计算得到的逆解数量", ik_solutions.size());
+    print(os, "Number of inverse kinematics solutions found", ik_solutions.size());
     for(size_t i = 0; i < ik_solutions.size(); ++i) {
       print(os, " ->", ik_solutions[i], "| conf:", calc_confs[i]);
     }
@@ -203,41 +205,41 @@ void example_coordinateCalculation(Robot_T<wt, dof> *robot){
 }
 
 /**
- * @brief 示例 - 基础的信息查询
+ * @brief Example - basic information queries
  */
 template <WorkType wt, unsigned short dof>
 void example_basicOperation(Robot_T<wt, dof> *robot){
   error_code ec;
-  // *** 查询信息 ***
+  // *** Query information ***
   auto robotinfo = robot->robotInfo(ec);
-  print(os, "控制器版本号:", robotinfo.version, "机型:", robotinfo.type);
-  print(os, "xCore-SDK版本:", robot->sdkVersion());
+  print(os, "Controller version:", robotinfo.version, "Model:", robotinfo.type);
+  print(os, "xCore-SDK version:", robot->sdkVersion());
 
-  // *** 获取机器人当前位姿，轴角度，基坐标系等信息 ***
-  auto joint_pos = robot->jointPos(ec); // 轴角度 [rad]
-  auto joint_vel = robot->jointVel(ec); // 轴速度 [rad/s]
-  auto joint_torque = robot->jointTorque(ec); // 轴力矩 [Nm]
+  // *** Get the robot's current pose, joint angles, base frame, and other information ***
+  auto joint_pos = robot->jointPos(ec); // joint angles [rad]
+  auto joint_vel = robot->jointVel(ec); // joint velocities [rad/s]
+  auto joint_torque = robot->jointTorque(ec); // joint torques [Nm]
   auto tcp_xyzabc = robot->posture(CoordinateType::endInRef, ec);
   auto flan_cart = robot->cartPosture(CoordinateType::flangeInBase, ec);
-  robot->baseFrame(ec); // 基坐标系
-  print(os, "末端相对外部参考坐标系位姿", tcp_xyzabc);
-  print(os, "法兰相对基坐标系 -", flan_cart);
+  robot->baseFrame(ec); // base frame
+  print(os, "End-effector pose relative to the external reference frame", tcp_xyzabc);
+  print(os, "Flange relative to the base frame -", flan_cart);
 
 #if 0
-  // 设置基坐标系。设置后需要重启工控机生效
-  Frame base_frame_headstand = {0, 0, 0, M_PI, 0, 0}; // 倒装, A = 180°
+  // Set the base frame. Requires restarting the control cabinet PC to take effect
+  Frame base_frame_headstand = {0, 0, 0, M_PI, 0, 0}; // upside-down mount, A = 180 deg
   robot->setBaseFrame(base_frame_headstand, ec);
 #endif
 
-  // 查询最近5条错误级别控制器日志
-  print(os, "查询最近5条错误级别控制器日志");
+  // Query the 5 most recent error-level controller log entries
+  print(os, "Querying the 5 most recent error-level controller log entries");
   auto controller_logs = robot->queryControllerLog(5, {LogInfo::error}, ec);
   for(const auto &log: controller_logs) {
     print(os, log.content);
   }
 
-  // 查询第10-15条所有级别控制器日志
-  print(os, "查询第10-15条所有级别控制器日志");
+  // Query controller log entries 10-15 of all levels
+  print(os, "Querying controller log entries 10-15 of all levels");
   controller_logs = robot->queryControllerLog(5, {LogInfo::error}, ec, 10);
   for(const auto &log: controller_logs) {
     print(os, log.content);
@@ -245,155 +247,155 @@ void example_basicOperation(Robot_T<wt, dof> *robot){
 }
 
 /**
- * @brief 示例 - 打开关闭拖动
+ * @brief Example - enable/disable drag (hand-guiding)
  */
 void example_drag(BaseCobot *robot) {
   error_code ec;
   robot->setOperateMode(rokae::OperateMode::manual, ec);
-  robot->setPowerState(false, ec); // 打开拖动之前，需要机械臂处于手动模式下电状态
-  // 笛卡尔空间，自由拖动
+  robot->setPowerState(false, ec); // Before enabling drag, the arm must be powered off in manual mode
+  // Cartesian space, free drag
   robot->enableDrag(DragParameter::cartesianSpace, DragParameter::freely, ec);
-  print(os, "打开拖动", ec, "按回车继续");
-  std::this_thread::sleep_for(std::chrono::seconds(2)); //等待切换控制模式
+  print(os, "Enable drag", ec, "press Enter to continue");
+  std::this_thread::sleep_for(std::chrono::seconds(2)); //wait for the control mode switch
   while(getchar() != '\n');
   robot->disableDrag(ec);
-  std::this_thread::sleep_for(std::chrono::seconds(2)); //等待切换控制模式
+  std::this_thread::sleep_for(std::chrono::seconds(2)); //wait for the control mode switch
 }
 
 /**
- * @brief 示例 - Jog机器人
+ * @brief Example - jog the robot
  * @param robot
  */
 void example_jog(BaseRobot *robot) {
   error_code ec;
   robot->setMotionControlMode(rokae::MotionControlMode::NrtCommand, ec);
-  robot->setOperateMode(rokae::OperateMode::manual, ec); // 手动模式下jog
-  print(os, "准备Jog机器人, 需手动模式上电, 请确认已上电后按回车键");
-  // 对于有外接使能开关的情况，需要按住开关手动上电
+  robot->setOperateMode(rokae::OperateMode::manual, ec); // jog requires manual mode
+  print(os, "Preparing to jog the robot. Manual-mode power-on is required; please confirm power is on, then press Enter");
+  // If an external enable switch is connected, hold the switch to power on manually
   robot->setPowerState(true, ec);
 
-  print(os, "-- 开始Jog机器人-- \n世界坐标系下, 沿Z+方向运动50mm, 速率50%，等待机器人停止运动后按回车继续");
+  print(os, "-- Starting to jog the robot -- \nIn the world frame, move 50mm along Z+, rate 50%. Wait for the robot to stop moving, then press Enter to continue");
   robot->startJog(JogOpt::world, 0.5, 50, 2, true, ec);
   while(getchar() != '\n');
-  print(os, "轴空间，6轴负向连续转动，速率5%，按回车停止Jog");
+  print(os, "Joint space, continuous negative rotation of axis 6, rate 5%, press Enter to stop jogging");
   robot->startJog(JogOpt::jointSpace, 0.05, 5000, 5, false, ec);
-  while(getchar() != '\n'); // 按回车停止
-  robot->stop(ec); // jog结束必须调用stop()停止
+  while(getchar() != '\n'); // press Enter to stop
+  robot->stop(ec); // stop() must be called to end jogging
 }
 
 /**
- * @brief 示例 - 奇异点规避Jog，适用于xMateSR、xMateCR系列机型
+ * @brief Example - singularity-avoidance jog, applicable to the xMateSR and xMateCR series
  */
 void example_avoidSingularityJog(xMateRobot &robot) {
   error_code ec;
-  robot.setOperateMode(rokae::OperateMode::manual, ec); // 手动模式下jog
-  print(os, "准备Jog机器人, 需手动模式上电, 请确认已上电后按回车键");
-  // 对于有外接使能开关的情况，需要按住开关手动上电
+  robot.setOperateMode(rokae::OperateMode::manual, ec); // jog requires manual mode
+  print(os, "Preparing to jog the robot. Manual-mode power-on is required; please confirm power is on, then press Enter");
+  // If an external enable switch is connected, hold the switch to power on manually
   robot.setPowerState(true, ec);
   while(getchar() != '\n');
 
-  print(os, "-- 开始Jog机器人-- \n奇异规避模式, 沿Y+方向运动50mm, 速率20%，等待机器人停止运动后按回车继续");
+  print(os, "-- Starting to jog the robot -- \nSingularity-avoidance mode, move 50mm along Y+, rate 20%. Wait for the robot to stop moving, then press Enter to continue");
   robot.startJog(JogOpt::singularityAvoidMode, 0.2, 50, 1, true, ec);
-  while(getchar() != '\n'); // 按回车停止
-  robot.stop(ec); // jog结束必须调用stop()停止
+  while(getchar() != '\n'); // press Enter to stop
+  robot.stop(ec); // stop() must be called to end jogging
 }
 
 /**
- * @brief 示例 - NTP设置。注意: NTP功能非标配，需要对机器人进行额外升级
+ * @brief Example - NTP configuration. Note: NTP is not a standard feature and requires an additional robot upgrade
  */
 void example_ConfigNtp(BaseRobot *robot) {
   error_code ec;
-  // 设置NTP服务端地址
+  // Set the NTP server address
   robot->configNtp("192.168.0.170", ec);
   if(ec) {
-    print(os, "设置NTP服务器地址失败:", ec);
+    print(os, "Failed to set the NTP server address:", ec);
   }
-  // 同步一次时间
+  // Sync the time once
   robot->syncTimeWithServer(ec);
   if(ec) {
-    print(os, "同步时间失败:", ec);
+    print(os, "Time sync failed:", ec);
   }
 }
 
 /**
- * @brief 示例 - 打开和关闭碰撞检测
+ * @brief Example - enable and disable collision detection
  */
 template <unsigned short dof>
 void example_setCollisionDetection(Cobot<dof> *robot) {
   error_code ec;
-  // 设置各轴灵敏度，范围0.01 ~ 2.0，相当于RobotAssist上设置的1% ~ 200%
-  // 触发行为：安全停止；回退距离0.01m
+  // Set the sensitivity for each axis, range 0.01 ~ 2.0, equivalent to 1% ~ 200% as set in RobotAssist
+  // Trigger behavior: safety stop; retreat distance 0.01m
   robot->enableCollisionDetection({1.0, 1.0, 0.01, 2.0, 1.0, 1.0, 1.0}, StopLevel::stop1, 0.01, ec);
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  // 关闭碰撞检测
+  // Disable collision detection
   robot->disableCollisionDetection(ec);
 }
 
 /**
- * @brief 急停复位
+ * @brief Emergency stop reset
  */
 void example_emergencyStopReset(BaseRobot *robot) {
   error_code ec;
-  print(os, "急停复位");
+  print(os, "Emergency stop reset");
   robot->recoverState(1, ec);
   if (ec) {
-    print(os, "复位失败:", ec);
+    print(os, "Reset failed:", ec);
   } else {
-    print(os, "复位成功");
+    print(os, "Reset succeeded");
   }
 }
 
 /**
- * @brief 是否使能平行基座模式（协作5轴）
+ * @brief Enable/disable parallel-base mode (5-axis collaborative robot)
  */
 void example_CompletePostureLerp(xMateCr5Robot* robot) {
     error_code ec;
-    print(os, "使能平行基座模式");
-    robot->enableCompletePostureLerp(true, ec); // true: 开启，false: 失败
+    print(os, "Enable parallel-base mode");
+    robot->enableCompletePostureLerp(true, ec); // true: enable, false: failure
     if (ec) {
-        print(os, "开启平行基座模式失败:", ec);
+        print(os, "Failed to enable parallel-base mode:", ec);
     }
     else {
-        print(os, "开启平行基座模式成功");
+        print(os, "Parallel-base mode enabled successfully");
     }
 }
 
 /**
- * @brief 示例 - 设置示教器模式
+ * @brief Example - set the teach pendant mode
  */
 void example_setTpMode(BaseRobot *robot) {
   error_code ec;
-  // 不带示教器使用
+  // Use without a teach pendant
   robot->setTeachPendantMode(false, ec);
   if(ec) {
-    print(os, "设置失败:", ec);
+    print(os, "Configuration failed:", ec);
     return;
   }
-  print(os, "设置不连接示教器成功");
+  print(os, "Successfully configured to operate without a teach pendant");
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  // 不连接示教器时，可以手动模式下上电
+  // When not connected to a teach pendant, the robot can be powered on in manual mode
   robot->setOperateMode(rokae::OperateMode::manual, ec);
   robot->setPowerState(true, ec); // could be powered on without teach pendant
 }
 
 /**
- * @brief 重启/关闭工控机
+ * @brief Reboot/shut down the control cabinet PC
  */
 void example_reboot(BaseRobot* robot) {
   error_code ec;
   robot->rebootSystem(ec);
-  print(os, "重启工控机");
-  if (ec) print(os, "重启失败:", ec);
-  else print(os, "重启成功");
+  print(os, "Rebooting the control cabinet PC");
+  if (ec) print(os, "Reboot failed:", ec);
+  else print(os, "Reboot succeeded");
 
-  // 关闭工控机
+  // Shut down the control cabinet PC
   robot->shutdownSystem(ec);
-  if (ec) print(os, "关机失败:", ec);
-  else print(os, "关机成功");
+  if (ec) print(os, "Shutdown failed:", ec);
+  else print(os, "Shutdown succeeded");
 }
 
 /**
- * @brief 示例 - 设置连接断开回调函数
+ * @brief Example - set the connection/disconnection callback function
  */
 void example_setConnectionHandler(BaseRobot *robot) {
   auto handler = [](bool connected){
