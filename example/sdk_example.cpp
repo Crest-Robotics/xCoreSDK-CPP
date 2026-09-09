@@ -409,18 +409,28 @@ void example_setConnectionHandler(BaseRobot *robot) {
  */
 int main() {
   try {
-    // *** 1. 连接机器人 ***
-    std::string ip = "192.168.0.160";
-    xMateRobot robot(ip);  // 此处连接的是协作6轴机型
+    // *** 1. Connect to the robot ***
+    std::string ip = "192.168.2.160";
+    std::cout << "Connecting to the robot with " << ip << "..." << std::endl;
+    xMateRobot robot(ip);  // this connects to a 6-axis collaborative robot model
+    std::cout << "Built robot object!" << std::endl;
 
-    // 其它机型
-//    xMateErProRobot robot; // 协作7轴机型
-//    StandardRobot robot; // 连接工业6轴机型
-//    PCB4Robot robot; // 连接PCB4轴机型
-//    PCB3Robot robot; // 连接PCB3轴机型
-//    xMateCr5Robot; // 协作5轴机型
+    // Check whether an emergency stop (or safety gate) is currently active before doing anything else
+    error_code power_ec;
+    print(os, "Current power state:", robot.powerState(power_ec));
 
-    example_basicOperation(&robot);
+    example_emergencyStopReset(&robot); // reset emergency stop if needed
+
+    print(os, "Current power state after reset:", robot.powerState(power_ec));
+
+    // Other models
+//    xMateErProRobot robot; // 7-axis collaborative robot model
+//    StandardRobot robot; // connect to a 6-axis industrial robot model
+//    PCB4Robot robot; // connect to a PCB 4-axis model
+//    PCB3Robot robot; // connect to a PCB 3-axis model
+//    xMateCr5Robot; // 5-axis collaborative robot model
+std::cout << "Running basic operation example..." << std::endl;
+example_basicOperation(&robot);
 
   } catch (const rokae::Exception &e) {
     std::cerr << e.what();
