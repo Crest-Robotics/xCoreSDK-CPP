@@ -20,6 +20,7 @@ set(EXAMPLES
     communication_example
     modbusRTU_endtool_control
     controller_upgrade
+    cr20_force_control_test
     )
 
 set(EXAMPLE_HEADERS

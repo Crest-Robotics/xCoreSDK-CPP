@@ -11,6 +11,7 @@ set(RT_EXAMPLES
     cartesian_s_line
     rt_industrial
     servoj_demo
+    cr20_cartesian_impedance_test
     )
 
 foreach(example ${RT_EXAMPLES})

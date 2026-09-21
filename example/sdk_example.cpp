@@ -274,6 +274,7 @@ void example_jog(BaseRobot *robot) {
   // If an external enable switch is connected, hold the switch to power on manually
   robot->setPowerState(true, ec);
 
+
   print(os, "-- Starting to jog the robot -- \nIn the world frame, move 50mm along Z+, rate 50%. Wait for the robot to stop moving, then press Enter to continue");
   robot->startJog(JogOpt::world, 0.5, 50, 2, true, ec);
   while(getchar() != '\n');
@@ -346,6 +347,59 @@ void example_emergencyStopReset(BaseRobot *robot) {
 }
 
 /**
+ * @brief Diagnostic dump for "setOperateMode(automatic) fails with an EStop
+ * message, but powerState() doesn't report estop". Prints every read-only
+ * status query first (safe, no side effects), then tries the two documented
+ * recovery calls, then - clearly separated, since these item values beyond 1
+ * aren't documented - sweeps a few other recoverState() item numbers. Ends
+ * by retrying setOperateMode() so one run shows whether anything helped.
+ */
+void example_diagnoseOperateModeBlock(xMateRobot *robot) {
+  error_code ec;
+
+  print(os, "=== Read-only status (no side effects) ===");
+  print(os, "powerState:", robot->powerState(ec), " ec:", ec);
+  print(os, "operateMode:", robot->operateMode(ec), " ec:", ec);
+
+  auto states = robot->getStateList(ec);
+  print(os, "getStateList ec:", ec);
+  print(os, "  operation_mode:", states.operation_mode);
+  print(os, "  speed_override:", states.speed_override);
+  print(os, "  digital_signals (", states.digital_signals.size(), "):");
+  for (const auto &sig : states.digital_signals) {
+    print(os, "   ", sig.first, "=", sig.second);
+  }
+  print(os, "  analog_signals (", states.analog_signals.size(), "):");
+  for (const auto &sig : states.analog_signals) {
+    print(os, "   ", sig.first, "=", sig.second);
+  }
+
+  print(os, "=== clearServoAlarm() - documented, separate fault category from E-stop ===");
+  robot->clearServoAlarm(ec);
+  print(os, "clearServoAlarm ec:", ec,
+        ec ? "  (non-zero => the SDK doc says this specifically means a servo alarm WAS present and failed to clear)" : "  (no alarm, or cleared OK)");
+
+  print(os, "=== recoverState(1) - documented E-stop recovery ===");
+  robot->recoverState(1, ec);
+  print(os, "recoverState(1) ec:", ec);
+
+  print(os, "=== recoverState() with UNDOCUMENTED item values - only 1 is documented, treat these results as exploratory ===");
+  for (int item : {0, 2, 3, 4, 5}) {
+    error_code item_ec;
+    robot->recoverState(item, item_ec);
+    print(os, "  recoverState(", item, ") ec:", item_ec);
+  }
+
+  print(os, "=== Re-checking status after all recovery attempts ===");
+  print(os, "powerState:", robot->powerState(ec));
+  print(os, "operateMode:", robot->operateMode(ec));
+
+  print(os, "=== Retrying setOperateMode(automatic) ===");
+  robot->setOperateMode(OperateMode::automatic, ec);
+  print(os, "setOperateMode(automatic) ec:", ec, ec ? " STILL FAILING" : " SUCCEEDED");
+}
+
+/**
  * @brief Enable/disable parallel-base mode (5-axis collaborative robot)
  */
 void example_CompletePostureLerp(xMateCr5Robot* robot) {
@@ -415,23 +469,20 @@ int main() {
     xMateRobot robot(ip);  // this connects to a 6-axis collaborative robot model
     std::cout << "Built robot object!" << std::endl;
 
-    // Check whether an emergency stop (or safety gate) is currently active before doing anything else
-    error_code power_ec;
-    print(os, "Current power state:", robot.powerState(power_ec));
-
-    example_emergencyStopReset(&robot); // reset emergency stop if needed
-
-    print(os, "Current power state after reset:", robot.powerState(power_ec));
+    // Full diagnostic pass for the "setOperateMode(automatic) fails with an
+    // EStop message, but powerState() doesn't report estop" issue.
+    // example_diagnoseOperateModeBlock(&robot);
 
     // Other models
-//    xMateErProRobot robot; // 7-axis collaborative robot model
-//    StandardRobot robot; // connect to a 6-axis industrial robot model
-//    PCB4Robot robot; // connect to a PCB 4-axis model
-//    PCB3Robot robot; // connect to a PCB 3-axis model
-//    xMateCr5Robot; // 5-axis collaborative robot model
-std::cout << "Running basic operation example..." << std::endl;
-example_basicOperation(&robot);
-
+    //    xMateErProRobot robot; // 7-axis collaborative robot model
+    //    StandardRobot robot; // connect to a 6-axis industrial robot model
+    //    PCB4Robot robot; // connect to a PCB 4-axis model
+    //    PCB3Robot robot; // connect to a PCB 3-axis model
+    //    xMateCr5Robot; // 5-axis collaborative robot model
+    std::cout << "Running basic operation example..." << std::endl;
+    // example_basicOperation(&robot);
+    // robot.po
+    example_jog(&robot);
   } catch (const rokae::Exception &e) {
     std::cerr << e.what();
   }
