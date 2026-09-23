@@ -14,9 +14,16 @@
  * The controller is a spring: it takes a position command and pushes with
  * force proportional to how far that command is from where the tool actually
  * is. So thrust is commanded indirectly, by deliberately commanding a point
- * some distance AHEAD of the measured depth:
+ * some distance AHEAD of the measured depth. On top of that sits a constant
+ * feedforward preload, applied outside the position spring:
  *
- *     thrust = cartesian_stiffness_z * lead
+ *     thrust = preload + cartesian_stiffness_z * lead
+ *
+ * The preload exists because this arm has a friction deadband of about 20 N
+ * at the TCP: below it, a commanded offset produces neither motion nor a
+ * readable external force. See DrillConfig::preload_n for the measurements
+ * and for why a preload under breakaway is safe to put underneath the full
+ * lead schedule. Everything below concerns the spring term.
  *
  * That lead is the one number that matters, for two reasons at once. It sets
  * the working force, and it is also exactly how far the tool lunges if the
@@ -31,9 +38,12 @@
  * the stored lunge is 14 mm; the full 50 mm exists only below 45 mm, by which
  * point the bit is captured laterally by its own bore.
  *
- * The cap, `lead_max_m`, is the primary safety dial. It alone converts this
- * into the shallow, low-force configurations of the commissioning ladder: at
- * `lead_max_m = 0.003` the schedule is clamped flat at 9 N everywhere.
+ * The cap, `lead_max_m`, is the primary safety dial: it bounds both the
+ * spring thrust and the lunge distance. It is no longer the WHOLE dial,
+ * though - the preload sits underneath it and does not scale, so
+ * `lead_max_m = 0.003` now means 9 N of spring on top of the preload rather
+ * than 9 N in total. Low-force rungs below the deadband are not available at
+ * any setting of it, because they were never observable in the first place.
  */
 
 #ifndef CR20_DRILL_CYCLE_HPP_
@@ -51,6 +61,7 @@ namespace cr20_drill
 enum class Phase
 {
     kSettle = 0,
+    kPreload,
     kSpotting,
     kEntry,
     kDrilling,
@@ -66,6 +77,8 @@ inline const char* phaseName(Phase phase)
     {
         case Phase::kSettle:
             return "settle";
+        case Phase::kPreload:
+            return "preload";
         case Phase::kSpotting:
             return "spotting";
         case Phase::kEntry:
@@ -95,6 +108,7 @@ enum class AbortReason
     kNone = 0,
     kOperator,
     kCalibrationResidual,
+    kPreloadCreep,
     kNoContact,
     kMotionReversed,
     kAxialForce,
@@ -117,6 +131,8 @@ inline const char* abortReasonName(AbortReason reason)
             return "operator";
         case AbortReason::kCalibrationResidual:
             return "calibration_residual";
+        case AbortReason::kPreloadCreep:
+            return "preload_creep";
         case AbortReason::kNoContact:
             return "no_contact";
         case AbortReason::kMotionReversed:
@@ -217,6 +233,77 @@ struct DrillConfig
     /// plan block and logged per row is computed from it, so it must match.
     double push_stiffness_n_per_m = 3000.0;
 
+    // --- the preload ------------------------------------------------------
+    //
+    // A constant feedforward force along the bit axis, applied through
+    // setCartesianImpedanceDesiredTorque (fc frame, Z) rather than through the
+    // position spring. Thrust is therefore TWO terms from here on:
+    //
+    //     thrust = preload_n + push_stiffness_n_per_m * lead
+    //
+    // WHY IT EXISTS. The 2026-09-22 free-air runs measured a friction deadband
+    // of about 20 N at the TCP. Free-air velocity is flat at 0.15-0.3 mm/s
+    // from 9 N all the way to 18 N, then steps to 1.34 mm/s at 19 N; the
+    // reverse direction parks the tool 6.56 mm short of its command at rest,
+    // which is 19.7 N. Below that band a commanded offset produces neither
+    // motion nor a readable external force - the estimator reported 6.16 N
+    // against a 9 N spring load with nothing touching the tool. Every force
+    // target under ~20 N was therefore unobservable, which is what killed the
+    // contact detector and what made the bottom of the commissioning ladder
+    // meaningless. Stiffness offers no relief: 3000 N/m is the SDK ceiling and
+    // is already set.
+    //
+    // WHY IT IS SAFE TO KEEP THE FULL LEAD SCHEDULE UNDERNEATH IT. A preload
+    // BELOW breakaway cannot drive motion on its own. If the bit breaks
+    // through, the lead collapses as the tool lunges, net force falls to the
+    // preload alone, and the arm stops because the preload is under the knee.
+    // The spring term is self-limiting because force decays with distance; the
+    // preload is self-limiting because it sits under the floor. So the stored
+    // lunge at any depth is exactly what it was before.
+    //
+    // WHICH MAKES "UNDER BREAKAWAY" A HARD CONSTRAINT, NOT A PREFERENCE. Above
+    // it the arm creeps forward continuously at zero lead with nothing
+    // commanding it. Breakaway varies with pose and has been measured in ONE
+    // pose, so this is set well under the single figure we have rather than
+    // shaved close to it. kPreload exists to catch the case where it is still
+    // too high - see preload_creep_abort_m.
+    //
+    // NOTE FOR THE LADDER: lead_max_m is no longer the whole safety dial. It
+    // still bounds the lunge, but it no longer bounds the thrust, because this
+    // term sits underneath it and does not scale.
+    double preload_n = 15.0;
+
+    /// Rate the preload is ramped in and out at. Applied from a non-RT thread,
+    /// so this is a target rather than a guarantee; the trace logs what was
+    /// actually asked for each cycle.
+    double preload_ramp_n_per_s = 20.0;
+
+    /// Held at full preload and zero lead before spotting begins. This is the
+    /// measurement window the whole design rests on: preload applied, nothing
+    /// else commanded, so the trace shows plainly whether the arm holds
+    /// station and whether tauExt_inStiff reports the feedforward or subtracts
+    /// it as commanded internal torque. That second question decides whether
+    /// the axial force thresholds need re-basing, and it cannot be answered
+    /// from the SDK headers.
+    double preload_hold_sec = 2.0;
+
+    /// Travel during kPreload BEYOND the standing offset the preload itself
+    /// creates, at which the preload is judged to be driving the arm rather
+    /// than merely loading it.
+    ///
+    /// The offset is not a fault and cannot be designed away. With the
+    /// command held at the baseline, the tool moves forward until the spring
+    /// cancels the feedforward - preload_n/stiffness, or 5 mm at 15 N against
+    /// 3000 N/m - and then stops. An ABSOLUTE threshold below that figure
+    /// aborts on the preload working correctly, which is what a 1 mm limit
+    /// did on 2026-09-23: the tool converged on 1.4 mm and the run stopped
+    /// calling it a runaway.
+    ///
+    /// So the check is on the excess over that offset. Converging anywhere
+    /// inside it means friction and the spring found a balance; travelling
+    /// past it means neither is holding, which is the real failure.
+    double preload_creep_margin_m = 0.003;
+
     // --- regime boundaries, on measured depth ---------------------------
 
     double entry_begins_m = 0.003;
@@ -231,10 +318,10 @@ struct DrillConfig
     // commanded 2.5 mm/s therefore permits about 1.25 mm/s of cutting, close
     // to the 1.47 mm/s achieved by hand in the logged reference run.
 
-    double spotting_feed_m_per_s = 0.0005;
-    double entry_feed_m_per_s = 0.0015;
-    double drilling_feed_m_per_s = 0.0025;
-    double slow_finish_feed_m_per_s = 0.0010;
+    double spotting_feed_m_per_s = 0.0010;
+    double entry_feed_m_per_s = 0.0030;
+    double drilling_feed_m_per_s = 0.0050;
+    double slow_finish_feed_m_per_s = 0.0020;
 
     // --- retract --------------------------------------------------------
 
@@ -417,6 +504,13 @@ struct Command
     /// consistency check in the trace.
     double lead_m = 0.0;
 
+    /// Feedforward force to apply along the bit axis this cycle, newtons.
+    /// The caller is responsible for getting this to the controller; it is
+    /// produced here so that the ramp sequencing is part of the state machine
+    /// that drill_checks.cpp can exercise on a laptop, rather than living in
+    /// the thread that happens to own the SDK handle.
+    double preload_n = 0.0;
+
     Phase phase = Phase::kSettle;
     Limit limit = Limit::kNone;
     bool finished = false;
@@ -497,17 +591,29 @@ class DrillCycle
         return std::clamp(scheduled, config_.lead_at_surface_m, config_.lead_max_m);
     }
 
-    /// Thrust the schedule implies at a given hole depth, newtons.
+    /// Thrust the schedule implies at a given hole depth, newtons. Both
+    /// terms: the preload floor plus what the spring adds on top of it.
     double thrustForDepth(double hole_depth_m) const
     {
-        return leadForDepth(hole_depth_m) * config_.push_stiffness_n_per_m;
+        return config_.preload_n + leadForDepth(hole_depth_m) * config_.push_stiffness_n_per_m;
     }
+
 
     /// Depth of the hole itself: travel beyond the point where the bit was
     /// detected to have stalled against the work. Zero until contact is
     /// found. This - not the raw travel from the start pose - is what the
     /// regime boundaries, the lead schedule and the depth target all use, so
     /// that the operator's eyeballed standoff does not come out of the hole.
+    /// How far the preload pushes the tool forward when the command is held
+    /// at the baseline: the displacement at which the spring exactly cancels
+    /// the feedforward. Zero without a preload.
+    double preloadStandingOffsetM() const
+    {
+        return config_.push_stiffness_n_per_m > 0.0
+                   ? std::abs(config_.preload_n) / config_.push_stiffness_n_per_m
+                   : 0.0;
+    }
+
     double holeDepth(double measured_depth_m) const
     {
         return measured_depth_m - contact_datum_m_;
@@ -553,6 +659,13 @@ class DrillCycle
             std::abs(settleResidualN()) > config_.calibration_residual_abort_n)
         {
             return AbortReason::kCalibrationResidual;
+        }
+        // Travel past the point where the spring can cancel the feedforward
+        // means nothing is holding the tool and the preload is driving it.
+        if (phase_ == Phase::kPreload &&
+            std::abs(fb.depth_m) > preloadStandingOffsetM() + config_.preload_creep_margin_m)
+        {
+            return AbortReason::kPreloadCreep;
         }
         if (contact_check_failed_)
         {
@@ -632,6 +745,10 @@ class DrillCycle
             // is the most retracting force this design can apply anyway.
             const bool command_home = std::abs(commanded_depth_) <= kDepthEpsilonM;
             const bool gave_up = time_in_phase_s_ >= config_.retract_timeout_sec;
+
+            // Nothing waits on the feedforward here: it cannot be released
+            // from inside the loop at all, so the caller clears it once the
+            // loop has stopped.
             return (command_home && (retract_tool_home_ || gave_up)) ? Phase::kDone : Phase::kRetract;
         }
 
@@ -642,7 +759,15 @@ class DrillCycle
 
         if (phase_ == Phase::kSettle)
         {
-            return time_in_phase_s_ >= config_.settle_sec ? Phase::kSpotting : Phase::kSettle;
+            return time_in_phase_s_ >= config_.settle_sec ? Phase::kPreload : Phase::kSettle;
+        }
+
+        // Leave only once the feedforward has been held AT its target, timed
+        // from the moment it got there rather than from phase entry, so the
+        // ramp does not eat into the measurement window.
+        if (phase_ == Phase::kPreload)
+        {
+            return preload_hold_s_ >= config_.preload_hold_sec ? Phase::kSpotting : Phase::kPreload;
         }
 
         if (phase_ == Phase::kDwell)
@@ -714,6 +839,10 @@ class DrillCycle
                 settle_samples_ = 0;
                 break;
 
+            case Phase::kPreload:
+                preload_hold_s_ = 0.0;
+                break;
+
             case Phase::kSpotting:
                 contact_hold_s_ = 0.0;
                 contact_checked_ = false;
@@ -748,14 +877,25 @@ class DrillCycle
         command.phase = phase_;
         command.finished = (phase_ == Phase::kDone);
 
+        updatePreload(fb);
+
         switch (phase_)
         {
             case Phase::kSettle:
                 // Exactly zero offset, so the first pose commanded to the
                 // controller is bit-for-bit the pose the arm is already in.
+                // The preload is still zero here, which is what makes the
+                // residual below a measurement of the force sensor rather
+                // than of the feedforward.
                 commanded_depth_ = 0.0;
                 settle_force_sum_ += fb.axial_force_n;
                 ++settle_samples_;
+                break;
+
+            case Phase::kPreload:
+                // Command held at the baseline while the feedforward comes up
+                // underneath it. Nothing here moves the commanded point.
+                commanded_depth_ = 0.0;
                 break;
 
             case Phase::kSpotting:
@@ -785,7 +925,29 @@ class DrillCycle
 
         command.depth_m = commanded_depth_;
         command.lead_m = commanded_depth_ - fb.depth_m;
+        command.preload_n = preload_applied_n_;
         return command;
+    }
+
+    /**
+     * The feedforward is constant for the whole run, and this reports it.
+     *
+     * It cannot be anything else. setCartesianImpedanceDesiredTorque is a
+     * pre-loop configuration call - every in-loop write is rejected by the
+     * controller - so the force is live from the first cycle, through the
+     * retract, until the loop stops and the caller clears it. There is no
+     * ramp to own and no phase that can turn it off.
+     *
+     * Two consequences worth stating where they cannot be missed. The settle
+     * residual is measured with the preload applied, so it is no longer a
+     * clean calibration check. And the retract has to beat this force on top
+     * of 19.7 N of reverse stiction - which it does only because the retract
+     * command is driven to -30 mm, i.e. -90 N of spring, that swamps it.
+     */
+    void updatePreload(const Feedback& fb)
+    {
+        preload_applied_n_ = config_.preload_n;
+        preload_hold_s_ += fb.dt_s;
     }
 
     /**
@@ -958,6 +1120,7 @@ class DrillCycle
 
     static constexpr double kDepthEpsilonM = 1e-6;
     static constexpr double kLeadEpsilonM = 1e-9;
+    static constexpr double kPreloadEpsilonN = 1e-6;
 
     DrillConfig config_;
 
@@ -972,6 +1135,12 @@ class DrillCycle
     std::size_t settle_samples_ = 0;
 
     bool retract_tool_home_ = false;
+
+    /// Feedforward force currently asked for, newtons. Ramped by
+    /// updatePreload() and reported through Command::preload_n; this class
+    /// never talks to the controller itself.
+    double preload_applied_n_ = 0.0;
+    double preload_hold_s_ = 0.0;
 
     double contact_hold_s_ = 0.0;
     bool contact_checked_ = false;

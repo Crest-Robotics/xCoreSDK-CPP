@@ -87,12 +87,37 @@ constexpr double kHoleDepthM = 0.055;
 
 /// Ceiling on the commanded lead. THE safety dial: maximum thrust is
 /// kLeadMaxM * kStiffness[2], and maximum lunge distance is kLeadMaxM.
-constexpr double kLeadMaxM = 0.020;
+constexpr double kLeadMaxM = 0.055;
 
 /// Set false for a deliberate free-air stroke, where there is nothing to
 /// touch. With it true the run refuses to leave spotting until the bit has
 /// stalled against something.
+///
+/// Still false: the contact detector is known broken. It fires on stiction,
+/// not contact, because at the old 12 N operating point free air and contact
+/// are indistinguishable by lead, by stall and by force alike - all three
+/// sit inside the deadband kPreloadN exists to clear. Redesigning it needs
+/// data from a preloaded run first.
 constexpr bool kRequireContact = false;
+
+/// Constant feedforward thrust along the bit axis, newtons, applied through
+/// setCartesianImpedanceDesiredTorque rather than through the position
+/// spring. See DrillConfig::preload_n for why this exists and why it must
+/// stay under this pose's breakaway force.
+///
+/// 15 N against a measured breakaway of ~19 N in the one pose characterised
+/// so far. Deliberately not shaved closer: breakaway varies with pose, and
+/// above it the arm creeps forward with nothing commanding it.
+///
+/// The API ceiling for this field is +-60 N per axis, which is also why the
+/// non-RT force control module cannot do this job - its setCartesianDesiredForce
+/// is capped at 60 N total, well under the 100-150 N the hole needs.
+constexpr double kPreloadN = 15.0;
+
+/// Change in the commanded feedforward below which no write is sent. Well
+/// under the 0.4 N the ramp moves per posting interval, so it suppresses
+/// repeats at the top and bottom of the ramp without ever swallowing a step.
+constexpr double kPreloadWriteEpsilonN = 0.01;
 
 /// [X, Y, Z, Rx, Ry, Rz] in the force-control (tool) frame.
 ///
@@ -236,6 +261,7 @@ struct Sample
     double measured_depth_m;
     double hole_depth_m;
     double lead_m;
+    double preload_n;
     double lateral_x_m;
     double lateral_y_m;
     double axis_drift_rad;
@@ -488,10 +514,17 @@ int main()
         return 1;
     }
 
-    // Explicitly zero rather than simply not called, so a value left behind
-    // by a previous session cannot leak into this one. All thrust comes from
-    // the commanded lead, which keeps the force model to one equation.
-    rtCon->setCartesianImpedanceDesiredTorque({0, 0, 0, 0, 0, 0}, ec);
+    // Always written, so a value left behind by a previous session cannot
+    // leak into this one.
+    //
+    // Set ONCE, here, and not touched again until after the loop stops. This
+    // is a pre-loop configuration call, not a runtime one: both SDK reference
+    // examples set it before setControlLoop, and a version of this file that
+    // ramped it from the watchdog thread had all 2495 of its in-loop writes
+    // rejected while this same call succeeded. The preload is therefore live
+    // from the first control cycle, including settle - which is why the
+    // settle residual is no longer a clean calibration check.
+    rtCon->setCartesianImpedanceDesiredTorque({0, 0, kPreloadN, 0, 0, 0}, ec);
     if (ec)
     {
         std::cerr << "setCartesianImpedanceDesiredTorque failed: " << ec.message() << std::endl;
@@ -579,6 +612,7 @@ int main()
     config.lead_max_m = kLeadMaxM;
     config.require_contact = kRequireContact;
     config.push_stiffness_n_per_m = kStiffness[2];
+    config.preload_n = kPreloadN;
 
     DrillCycle cycle{config};
 
@@ -609,7 +643,8 @@ int main()
             << "# lead_at_surface_m," << config.lead_at_surface_m << '\n'
             << "# lead_slope," << config.lead_slope << '\n'
             << "# push_stiffness_n_per_m," << config.push_stiffness_n_per_m << '\n'
-            << "# max_thrust_n," << kLeadMaxM * kStiffness[2] << '\n'
+            << "# preload_n," << kPreloadN << '\n'
+            << "# max_thrust_n," << kPreloadN + kLeadMaxM * kStiffness[2] << '\n'
             << "# require_contact," << (kRequireContact ? 1 : 0) << '\n'
             << "# contact_datum_m," << cycle.contactDatum() << '\n'
             << "# contact_found," << (cycle.contactFound() ? 1 : 0) << '\n'
@@ -621,7 +656,10 @@ int main()
             << "# residual_magnitude_n," << residual_magnitude << '\n'
             << "# stiffness," << kStiffness[0] << ',' << kStiffness[1] << ',' << kStiffness[2] << ','
             << kStiffness[3] << ',' << kStiffness[4] << ',' << kStiffness[5] << '\n'
-            << "# feedforward_wrench,0,0,0,0,0,0\n"
+            // Z only, and RAMPED rather than constant - see the preload_n
+            // column for what was actually asked for each cycle. This line is
+            // the target the ramp was aiming at.
+            << "# feedforward_wrench,0,0," << kPreloadN << ",0,0,0\n"
             << "# tool_name," << kToolName << '\n'
             << "# tool_trans_m," << active_toolset.end.trans[0] << ',' << active_toolset.end.trans[1] << ','
             << active_toolset.end.trans[2] << '\n'
@@ -656,7 +694,7 @@ int main()
             csv << "# main_thread_policy," << policy << '\n';
         }
 
-        csv << "t_s,dt_ms,phase,limit,cmd_depth_mm,meas_depth_mm,hole_depth_mm,lead_mm,"
+        csv << "t_s,dt_ms,phase,limit,cmd_depth_mm,meas_depth_mm,hole_depth_mm,lead_mm,preload_n,"
                "lateral_x_mm,lateral_y_mm,axis_drift_deg,fx_n,fy_n,fz_n,tx_nm,ty_nm,tz_nm,"
                "q1_deg,q2_deg,q3_deg,q4_deg,q5_deg,q6_deg\n";
 
@@ -666,7 +704,8 @@ int main()
             csv << sample.t_s << ',' << sample.dt_ms << ',' << cr20_drill::phaseName(sample.phase) << ','
                 << cr20_drill::limitName(sample.limit) << ',' << sample.commanded_depth_m * 1000.0 << ','
                 << sample.measured_depth_m * 1000.0 << ',' << sample.hole_depth_m * 1000.0 << ','
-                << sample.lead_m * 1000.0 << ',' << sample.lateral_x_m * 1000.0 << ','
+                << sample.lead_m * 1000.0 << ',' << sample.preload_n << ','
+                << sample.lateral_x_m * 1000.0 << ','
                 << sample.lateral_y_m * 1000.0 << ',' << sample.axis_drift_rad * 180.0 / M_PI;
             for (const double value : sample.wrench)
             {
@@ -702,14 +741,17 @@ int main()
         std::cout << "\n=== Run plan ===\n"
                   << "  hole depth        " << kHoleDepthM * 1000.0 << " mm, from the CONTACT DATUM\n"
                   << "  lead cap          " << kLeadMaxM * 1000.0 << " mm  -> "
-                  << kLeadMaxM * kStiffness[2] << " N max thrust, and " << kLeadMaxM * 1000.0
+                  << kLeadMaxM * kStiffness[2] << " N max SPRING thrust, and " << kLeadMaxM * 1000.0
                   << " mm max lunge\n"
+                  << "  preload           " << kPreloadN << " N constant along the bit axis\n"
+                  << "  max thrust        " << kPreloadN + kLeadMaxM * kStiffness[2]
+                  << " N  (preload + spring; the preload does NOT scale with the lead cap)\n"
                   << "  stiffness         [" << kStiffness[0] << ", " << kStiffness[1] << ", " << kStiffness[2]
                   << ", " << kStiffness[3] << ", " << kStiffness[4] << ", " << kStiffness[5] << "]\n"
-                  << "  feedforward       zero on every axis\n"
+                  << "  feedforward       " << kPreloadN << " N on fc-frame Z, zero on every other axis\n"
                   << "  contact required  " << (kRequireContact ? "yes" : "NO (free-air stroke)") << "\n";
 
-        std::cout << "\n  Lead schedule\n"
+        std::cout << "\n  Lead schedule  (thrust = " << kPreloadN << " N preload + stiffness x lead)\n"
                   << "      hole depth      lead    thrust\n";
         for (const double depth_mm : {0.0, 3.0, 10.0, 20.0, 30.0, 45.0, 55.0})
         {
@@ -835,6 +877,12 @@ int main()
     std::atomic<double> live_force_n{0.0};
     std::atomic<int> live_phase{0};
 
+    /// The feedforward the state machine is currently asking for. Published
+    /// here rather than applied in the callback because
+    /// setCartesianImpedanceDesiredTorque is an ordinary SDK setter with no
+    /// RT guarantee, and the callback has a 1 ms budget.
+    std::atomic<double> live_preload_n{0.0};
+
     const auto loop_start = std::chrono::steady_clock::now();
     auto previous_tick = loop_start;
     double previous_depth_m = 0.0;
@@ -915,6 +963,7 @@ int main()
                                    delta.z_m,
                                    cycle.holeDepth(delta.z_m),
                                    command.lead_m,
+                                   command.preload_n,
                                    delta.x_m,
                                    delta.y_m,
                                    feedback.axis_drift_rad,
@@ -925,6 +974,7 @@ int main()
         live_hole_depth_mm.store(cycle.holeDepth(delta.z_m) * 1000.0, std::memory_order_relaxed);
         live_force_n.store(wrench[2], std::memory_order_relaxed);
         live_phase.store(static_cast<int>(command.phase), std::memory_order_relaxed);
+        live_preload_n.store(command.preload_n, std::memory_order_relaxed);
 
         // THE only place a commanded pose is produced. There is deliberately
         // no route here that writes a base-frame translation component.
@@ -986,6 +1036,7 @@ int main()
         while (!run_finished.load(std::memory_order_relaxed))
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
             const auto now = std::chrono::steady_clock::now();
             if (now > deadline && !watchdog_expired.load(std::memory_order_relaxed))
             {
@@ -1023,6 +1074,23 @@ int main()
     if (console_thread.joinable())
     {
         console_thread.join();
+    }
+
+    // Unconditional, and on the way out of the fault path too: the retract
+    // ramps the preload to zero in the normal case, but an RT exception skips
+    // straight past that. MotionControlMode already outlives the session -
+    // see docs/fault-logs - and a feedforward left standing on the controller
+    // would be the same class of trap. Before setPowerState, so it lands
+    // while the controller is still listening.
+    if (kPreloadN != 0.0)
+    {
+        error_code clear_ec;
+        rtCon->setCartesianImpedanceDesiredTorque({0, 0, 0, 0, 0, 0}, clear_ec);
+        if (clear_ec)
+        {
+            std::cerr << "WARNING: could not clear the feedforward wrench: " << clear_ec.message()
+                      << "\n         The controller may still be holding " << kPreloadN << " N on tool Z.\n";
+        }
     }
 
     robot.setPowerState(false, ec);
