@@ -36,6 +36,19 @@ add_executable(cr20_drill_checks cr20_drill/drill_checks.cpp)
 target_include_directories(cr20_drill_checks PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/cr20_drill)
 target_link_libraries(cr20_drill_checks eigen)
 
+#-------------------------------------------------------------------------------
+# CR20 admittance drill (cr20_drill/admittance_*). Same split as above: the
+# robot program, and off-robot checks for admittance_feed.hpp. The checks link
+# against nothing - the feed header is plain scalars - so an SDK dependency
+# creeping into it breaks this target. See docs/drill-anchor-control-design.md.
+add_executable(cr20_admittance_drill_test cr20_drill/admittance_drill_test.cpp)
+target_include_directories(cr20_admittance_drill_test PUBLIC
+    ${SHARED_INCLUDEDIR} ${CMAKE_CURRENT_SOURCE_DIR}/cr20_drill)
+target_link_libraries(cr20_admittance_drill_test Rokae::Rokae eigen Threads::Threads)
+
+add_executable(cr20_admittance_checks cr20_drill/admittance_checks.cpp)
+target_include_directories(cr20_admittance_checks PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/cr20_drill)
+
 foreach(example ${RT_EXAMPLES})
     add_executable(${example} ${example}.cpp ${EXAMPLE_HEADERS})
     target_include_directories(${example} PUBLIC
@@ -65,6 +78,7 @@ endif()
 #-------------------------------------------------------------------------------
 # Installation
 install(TARGETS ${RT_EXAMPLES} ${EXAMPLES_USE_XMATEMODEL} cr20_drill_test cr20_drill_checks
+    cr20_admittance_drill_test cr20_admittance_checks
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     OPTIONAL
