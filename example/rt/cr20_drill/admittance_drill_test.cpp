@@ -95,7 +95,7 @@ constexpr double kFreeAirStrokeM = 0.010;
 constexpr double kHoldSec = 1.0;
 
 /// Blind-hole depth, measured from the contact depth (bit seated).
-constexpr double kHoleDepthM = 0.015;
+constexpr double kHoleDepthM = 0.055;
 
 /// F_des: the push at zero feed. With no feed bias, the steady push while
 /// cutting is F_des - B * v_cut - about 50 N at the ~2.7 mm/s seen so far.

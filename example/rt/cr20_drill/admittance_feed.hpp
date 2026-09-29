@@ -225,7 +225,7 @@ struct AdmittanceConfig
 
     // --- retract --------------------------------------------------------
 
-    double retract_feed_m_per_s = 0.002;
+    double retract_feed_m_per_s = 0.015; // 5 x faster than the cut feed, so the run finishes quickly
 
     /// Pull ceiling. The jammed retract of 2026-09-24 twisted the tool at
     /// 123 N; this is half that. Exceeding it freezes the command - stop,
@@ -235,7 +235,11 @@ struct AdmittanceConfig
     // --- aborts ---------------------------------------------------------
 
     /// Cut-phase feed below this for stall_sec is a stall, not slow cutting.
-    double stall_feed_m_per_s = 0.0001;
+    /// Also the rebar detector: a masonry bit that grinds on steel creeps at
+    /// ~0.1-0.2 mm/s, which a threshold near zero would let run until the
+    /// watchdog. At B = 1e4 this is push within 5 N of F_des. Concrete never
+    /// fed below 1.65 mm/s, even for one sample (2026-09-28 holes).
+    double stall_feed_m_per_s = 0.0005;
     double stall_sec = 2.0;
 
     /// On the MAGNITUDE of fast-filtered push, so it also catches a sign
@@ -640,12 +644,18 @@ class AdmittanceFeed
             }
         }
         const double push_raw = kFzToPushSign * tared[kFz];
-        const double lateral_force = std::hypot(tared[kFx], tared[kFy]);
 
         push_control_ += onePoleAlpha(timeConstantForHz(config_.control_filter_hz)) * (push_raw - push_control_);
         const double fast_alpha = onePoleAlpha(timeConstantForHz(config_.abort_filter_hz));
         push_fast_ += fast_alpha * (push_raw - push_fast_);
-        lateral_force_fast_ += fast_alpha * (lateral_force - lateral_force_fast_);
+
+        // Filter fx and fy BEFORE taking the magnitude. The hammer shakes fx
+        // by +-50 N sample to sample around a real side load of 2-8 N; the
+        // magnitude of that rectifies to ~27 N, and one bad sample then
+        // tripped the 80 N abort twice (2026-09-28, 040248 and 040712).
+        lateral_fx_fast_ += fast_alpha * (tared[kFx] - lateral_fx_fast_);
+        lateral_fy_fast_ += fast_alpha * (tared[kFy] - lateral_fy_fast_);
+        lateral_force_fast_ = std::hypot(lateral_fx_fast_, lateral_fy_fast_);
         reaction_torque_filtered_ +=
             onePoleAlpha(config_.torque_filter_sec) * (tared[kTz] - reaction_torque_filtered_);
     }
@@ -682,6 +692,8 @@ class AdmittanceFeed
 
     double push_control_ = 0.0;
     double push_fast_ = 0.0;
+    double lateral_fx_fast_ = 0.0;
+    double lateral_fy_fast_ = 0.0;
     double lateral_force_fast_ = 0.0;
     double reaction_torque_filtered_ = 0.0;
 

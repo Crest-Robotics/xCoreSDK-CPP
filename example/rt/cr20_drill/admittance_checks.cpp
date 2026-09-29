@@ -36,6 +36,7 @@ using cr20_drill::admittance::AdmittanceFeed;
 using cr20_drill::admittance::Command;
 using cr20_drill::admittance::Feedback;
 using cr20_drill::admittance::kCyclePeriodSec;
+using cr20_drill::admittance::kFx;
 using cr20_drill::admittance::kFy;
 using cr20_drill::admittance::kFz;
 using cr20_drill::admittance::kTz;
@@ -82,13 +83,24 @@ struct Plant
 
     /// Constant offsets on the other axes, e.g. the tool's weight, which
     /// cartesianPosition does not compensate.
+    double fx_offset_n = 0.0;
     double fy_offset_n = 0.0;
     double tz_offset_nm = 0.0;
+
+    /// Hammer vibration on fx: a zero-mean sine. The 2026-09-28 holes shook
+    /// fx by about 27 N sd; the hammer runs at about 70-80 Hz.
+    double fx_vibration_amplitude_n = 0.0;
+    double vibration_hz = 75.0;
+
     double fz_noise_sd_n = 0.0;
     bool wrong_sign = false;          // report fz = +push instead of -push
 
     /// Hole depth (from the face) past which the material stops cutting.
     double rebar_at_hole_depth_m = 1e9;
+
+    /// How fast the bit still cuts once at the rebar. Zero is a bit that
+    /// makes no progress; a masonry bit grinding on steel creeps.
+    double rebar_cut_rate_m_per_n_s = 0.0;
 
     /// When set, a bit that has stopped cutting is also held in the hole, so
     /// retracting pulls against it once the slide is used up.
@@ -97,12 +109,14 @@ struct Plant
     // --- state ---
     double hole_bottom_m = 0.0; // seated-TCP coordinate of the hole bottom
     double push_n = 0.0;
+    double time_s = 0.0;
     std::mt19937 rng{12345};
 
     void reset()
     {
         hole_bottom_m = standoff_m + slide_m;
         push_n = 0.0;
+        time_s = 0.0;
     }
 
     double faceM() const
@@ -135,9 +149,10 @@ struct Plant
             push_n = 0.0;
         }
 
-        if (push_n > cut_threshold_n && !atRebar())
+        const double cut_rate = atRebar() ? rebar_cut_rate_m_per_n_s : cut_rate_m_per_n_s;
+        if (push_n > cut_threshold_n)
         {
-            hole_bottom_m += cut_rate_m_per_n_s * (push_n - cut_threshold_n) * kCyclePeriodSec;
+            hole_bottom_m += cut_rate * (push_n - cut_threshold_n) * kCyclePeriodSec;
         }
 
         double noise = 0.0;
@@ -149,8 +164,10 @@ struct Plant
         const double reported_push = push_n + noise;
         Wrench wrench{};
         wrench[kFz] = (wrong_sign ? reported_push : -reported_push) + fz_offset_n;
+        wrench[kFx] = fx_offset_n + fx_vibration_amplitude_n * std::sin(2.0 * M_PI * vibration_hz * time_s);
         wrench[kFy] = fy_offset_n;
         wrench[kTz] = tz_offset_nm;
+        time_s += kCyclePeriodSec;
         return wrench;
     }
 };
@@ -496,11 +513,73 @@ void checkRebarMidHole()
     check(rows.back().phase == Phase::kDone && rows.back().depth_m <= 1e-5, "rebar: retracts home");
 }
 
+void checkRebarCreep()
+{
+    std::printf("rebar the bit creeps through\n");
+
+    // A masonry bit on steel still grinds forward at ~0.1-0.2 mm/s. That is
+    // a stall too: without it the feed holds F_des until the watchdog.
+    AdmittanceConfig config;
+    config.damping_n_s_per_m = 1.0e4;
+    Plant plant;
+    plant.stiffness_n_per_m = 2.5e4;
+    plant.rebar_at_hole_depth_m = 0.008;
+    plant.rebar_cut_rate_m_per_n_s = 1.8e-6; // 0.16 mm/s at 100 N
+
+    AdmittanceFeed feed{config};
+    const auto rows = run(feed, plant, 120.0);
+    check(feed.abortReason() == AbortReason::kStall, "rebar creep: stall abort");
+    check(!visited(rows, Phase::kHold), "rebar creep: never reached the target");
+    check(rows.back().phase == Phase::kDone && rows.back().depth_m <= 1e-5, "rebar creep: retracts home");
+    check(rows.back().t_s < 30.0, "rebar creep: done well before the watchdog");
+}
+
+void checkHammerVibration()
+{
+    std::printf("hammer vibration on the lateral axes\n");
+
+    // Zero-mean shaking with peaks about the 136 N single samples of the
+    // 2026-09-28 lateral aborts, on top of a 5 N real side load, must not
+    // trip the lateral abort. Taking the magnitude before filtering
+    // rectified this into a false trip (from about 120 N of shaking).
+    AdmittanceConfig config;
+    config.damping_n_s_per_m = 1.0e4;
+    Plant shaken;
+    shaken.stiffness_n_per_m = 2.5e4;
+    shaken.fx_offset_n = 5.0;
+    shaken.fx_vibration_amplitude_n = 150.0;
+
+    AdmittanceFeed feed{config};
+    const auto rows = run(feed, shaken, 120.0);
+    check(feed.abortReason() == AbortReason::kNone && rows.back().phase == Phase::kDone,
+          "vibration: a full hole completes under 150 N of fx shaking");
+
+    // The same shaking with a real 90 N side load on fx still aborts.
+    AdmittanceFeed loaded{config};
+    double cut_started = -1.0;
+    run(loaded, shaken, 120.0, [&](double t, const Command& last, Feedback& fb) {
+        if (last.phase == Phase::kCut && cut_started < 0.0)
+        {
+            cut_started = t;
+        }
+        if (cut_started >= 0.0 && t > cut_started + 1.0 && t < cut_started + 1.2)
+        {
+            fb.wrench[kFx] += 90.0;
+        }
+    });
+    check(loaded.abortReason() == AbortReason::kLateralForce, "vibration: a real 90 N side load still aborts");
+}
+
 void checkJammedRetract()
 {
     std::printf("jammed retract\n");
     AdmittanceConfig config;
     Plant plant;
+    // The measured chain, not the 2e5 default. The pull overshoot past the
+    // cap is K * (v * tau_filter + v^2 / 2a): at the 15 mm/s retract it is
+    // ~9 N here but ~69 N at 2e5 N/m. Accepted on the assumption a jammed
+    // bit stays near the buffer's stiffness (2026-09-29).
+    plant.stiffness_n_per_m = 2.5e4;
     plant.rebar_at_hole_depth_m = 0.008;
     plant.jam_when_stalled = true;
 
@@ -660,6 +739,8 @@ int main()
     checkHardContact();
     checkMeasuredOperatingPoint();
     checkRebarMidHole();
+    checkRebarCreep();
+    checkHammerVibration();
     checkJammedRetract();
     checkWrongSign();
     checkOverload();
