@@ -21,6 +21,8 @@ set(EXAMPLES
     modbusRTU_endtool_control
     controller_upgrade
     cr20_force_control_test
+    cr20_toolset_query
+    cr20_manual_jog_logger
     )
 
 set(EXAMPLE_HEADERS

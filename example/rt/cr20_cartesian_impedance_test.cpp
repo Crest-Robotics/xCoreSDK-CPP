@@ -24,6 +24,30 @@
  *
  * Every step prints success/failure explicitly so a run pinpoints exactly
  * which call (if any) is rejected.
+ *
+ * Push extension: press along the tool's own +Z axis (not base Z).
+ * setFcCoor's `frame` argument is the tool frame expressed RELATIVE TO THE
+ * FLANGE - the reference example names its equivalent `toolToFlange`.
+ * Passing identity there means "tool frame == flange frame", which made an
+ * earlier run push along flange +Z instead of TCP +Z. FrameType::tool only
+ * selects the category of task frame (one that moves with the end-effector,
+ * vs. world-fixed or path-following); it does NOT make the controller pick
+ * up the pendant-configured TCP by itself. The real transform comes from
+ * Toolset::end via Utils::toolsetCalcPos().
+ *
+ * Note the ramp direction was already correct: tcpPose_m appears to be
+ * TCP-referenced, so its rotation Z column is true tool Z. Only the
+ * force-control frame was wrong. Target of "100N" can't be guaranteed by this API at a shallow
+ * depth: setCartesianImpedanceDesiredTorque's feedforward is documented as
+ * capped at +-60N per axis, and max Cartesian stiffness is 3000 N/m, so the
+ * spring term alone needs ~13.3mm of real position error against a rigid
+ * surface to supply the remaining 40N (100 - 60 feedforward). Commanding
+ * 20mm of penetration (instead of a literal 10mm) leaves ~6.7mm of margin
+ * over that theoretical minimum to actually get close to 100N on real
+ * hardware/surface stiffness, at the cost of the exact "10mm" spec. Logs
+ * tauExt_inStiff (external wrench in the force-control frame, i.e. tool
+ * frame here) alongside position so the actual achieved push force is
+ * visible, not just assumed.
  */
 
 #include <algorithm>
@@ -35,6 +59,7 @@
 #include <thread>
 
 #include "rokae/robot.h"
+#include "rokae/utility.h"
 
 using namespace rokae;
 
@@ -89,16 +114,37 @@ int main()
     }
     std::cout << "Got RT motion controller." << std::endl;
 
-    constexpr std::array<double, 16> kIdentity{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-    rtCon->setFcCoor(kIdentity, FrameType::tool, ec);
+    // Toolset::end is "机器人末端坐标系相对法兰坐标系转换" - the TCP frame
+    // relative to the flange, which is exactly what setFcCoor wants. Aborting
+    // rather than falling back to identity: identity silently pushes along
+    // flange Z, which is the bug this replaced.
+    Toolset active_toolset = robot.toolset(ec);
+    if (ec)
+    {
+        std::cerr << "toolset() query failed: " << ec.message() << std::endl;
+        return 1;
+    }
+    std::array<double, 16> refToWorld{};
+    std::array<double, 16> toolToFlange{};
+    Utils::toolsetCalcPos(active_toolset, refToWorld, toolToFlange);
+    std::cout << "Toolset end trans (m): [" << active_toolset.end.trans[0] << ", "
+              << active_toolset.end.trans[1] << ", " << active_toolset.end.trans[2] << "], rpy (rad): ["
+              << active_toolset.end.rpy[0] << ", " << active_toolset.end.rpy[1] << ", "
+              << active_toolset.end.rpy[2] << "]" << std::endl;
+
+    rtCon->setFcCoor(toolToFlange, FrameType::tool, ec);
     if (ec)
     {
         std::cerr << "setFcCoor failed: " << ec.message() << std::endl;
         return 1;
     }
-    std::cout << "setFcCoor OK." << std::endl;
+    std::cout << "setFcCoor OK (tool-to-flange from toolset)." << std::endl;
 
-    rtCon->setCartesianImpedance({200, 1500, 1500, 150, 150, 150}, ec);
+    // Impedance factor order is [X, Y, Z, Rx, Ry, Rz] in the fc frame set
+    // above (tool). Z is the push axis - maxed at the documented ceiling
+    // (3000 N/m) so the position error above actually produces force.
+    // X/Y left compliant so the tool can conform laterally on contact.
+    rtCon->setCartesianImpedance({200, 200, 3000, 150, 150, 150}, ec);
     if (ec)
     {
         std::cerr << "setCartesianImpedance failed: " << ec.message() << std::endl;
@@ -106,7 +152,11 @@ int main()
     }
     std::cout << "setCartesianImpedance OK." << std::endl;
 
-    rtCon->setCartesianImpedanceDesiredTorque({0, 0, 0, 0, 0, 0}, ec);
+    // Feedforward force bias, same [X,Y,Z,Rx,Ry,Rz] fc-frame order. +60N
+    // along tool Z is the documented max for this field - see header
+    // comment for why the remaining ~40N comes from stiffness * penetration
+    // instead.
+    rtCon->setCartesianImpedanceDesiredTorque({0, 0, 60, 0, 0, 0}, ec);
     if (ec)
     {
         std::cerr << "setCartesianImpedanceDesiredTorque failed: " << ec.message() << std::endl;
@@ -130,7 +180,8 @@ int main()
 
     try
     {
-        robot.startReceiveRobotState(std::chrono::milliseconds(1), {RtSupportedFields::tcpPose_m});
+        robot.startReceiveRobotState(std::chrono::milliseconds(1),
+                                      {RtSupportedFields::tcpPose_m, RtSupportedFields::tauExt_inStiff});
     }
     catch (const std::exception& e)
     {
@@ -143,43 +194,53 @@ int main()
 
     std::array<double, 16> baseline{};
     robot.getStateData(RtSupportedFields::tcpPose_m, baseline);
-    std::cout << "Got baseline pose." << std::endl;
+    std::cout << "Got baseline pose. translation (m): [" << baseline[3] << ", " << baseline[7] << ", "
+              << baseline[11] << "]" << std::endl;
 
     // The fault was never at shutdown or after seconds of holding - it fires
     // on literally the first RT cycle (confirmed by the contactors clicking
     // off the instant startLoop()'s first callback runs; the printed message
     // was just stuck behind buffered stdout, same as the docker log-buffering
-    // issue seen earlier this session). Commanding the full 50mm-offset
-    // `target` from cycle 1 is an instantaneous jump the robot obviously
-    // can't make in one 1ms cycle - that's almost certainly what's tripping
+    // issue seen earlier this session). Commanding a large offset `target`
+    // from cycle 1 is an instantaneous jump the robot obviously can't make
+    // in one 1ms cycle - that's almost certainly what's tripping
     // kActualCartesianPositionLimitsViolation immediately, not a stop-sequence
     // or drift issue. This is exactly what CartesianForceLimiter already
     // guards against in production code (a bounded per-cycle step, never a
-    // jump) - this diagnostic skipped that. Ramping here at 5mm/s so cycle 1
-    // moves a negligible 0.005mm, reaching the full 50mm target by ~10s.
-    constexpr double kPushOffsetM = -0.05;
-    constexpr double kJogSpeedMPerS = 0.005;
+    // jump) - this diagnostic skipped that originally. Ramping here at
+    // 5mm/s so cycle 1 moves a negligible 0.005mm.
+
+    // Push direction is the tool's own +Z axis in its CURRENT orientation,
+    // not base Z - baseline is a row-major 4x4 (tcpPose_m), so the tool's Z
+    // axis expressed in base frame is the third rotation column: indices
+    // [2, 6, 10]. Target = baseline translation + depth * that axis.
+    const std::array<double, 3> toolZInBase{baseline[2], baseline[6], baseline[10]};
+    constexpr double kCommandedPenetrationM = 0.02; // see header comment: 20mm, not 10mm, for force margin
+    constexpr double kJogSpeedMPerS = 0.05;
     constexpr double kControlCyclePeriodSec = 0.001;
     constexpr double kMaxStepM = kJogSpeedMPerS * kControlCyclePeriodSec;
-    const double target_z = baseline[11] + kPushOffsetM;
-    std::cout << "Target pose offset by " << kPushOffsetM << "m along base Z from baseline, ramped at "
-              << kJogSpeedMPerS << " m/s." << std::endl;
+    std::cout << "Target pose offset by " << (kCommandedPenetrationM * 1000.0)
+              << "mm along tool +Z from baseline, ramped at " << kJogSpeedMPerS
+              << " m/s. Push axis in base frame: [" << toolZInBase[0] << ", " << toolZInBase[1] << ", "
+              << toolZInBase[2] << "]" << std::endl;
 
     std::cout << "Press Enter to attempt startMove(cartesianImpedance) (will ramp toward the offset target)..."
               << std::endl;
     std::cin.get();
 
     std::atomic<bool> keep_running{true};
-    double current_z = baseline[11];
+    double current_depth = 0.0;
     std::function<CartesianPosition(void)> callback = [&]() -> CartesianPosition
     {
-        const double remaining = target_z - current_z;
+        const double remaining = kCommandedPenetrationM - current_depth;
         const double step = std::clamp(remaining, -kMaxStepM, kMaxStepM);
-        current_z += step;
+        current_depth += step;
 
         CartesianPosition output{};
         output.pos = baseline;
-        output.pos[11] = current_z;
+        output.pos[3] += current_depth * toolZInBase[0];
+        output.pos[7] += current_depth * toolZInBase[1];
+        output.pos[11] += current_depth * toolZInBase[2];
         if (!keep_running.load())
         {
             output.setFinished();
@@ -194,8 +255,6 @@ int main()
         std::this_thread::sleep_for(std::chrono::seconds(3));
         rtCon->startMove(RtControllerMode::cartesianImpedance);
         std::cout << "startMove(cartesianImpedance) SUCCEEDED." << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(3));
-
         rtCon->startLoop(/*blocking=*/false);
         std::cout << "Pushing for 10 seconds..." << std::endl;
         for (int i = 0; i < 10; ++i)
@@ -210,8 +269,18 @@ int main()
             // pattern to carry into production code.
             std::array<double, 16> measured{};
             robot.getStateData(RtSupportedFields::tcpPose_m, measured);
-            const double z_delta_mm = (measured[11] - baseline[11]) * 1000.0;
-            std::cout << "[t=" << (i + 1) << "s] z_delta_mm: " << z_delta_mm << std::endl;
+            const double dx = measured[3] - baseline[3];
+            const double dy = measured[7] - baseline[7];
+            const double dz = measured[11] - baseline[11];
+            const double depth_along_tool_z_mm =
+                (dx * toolZInBase[0] + dy * toolZInBase[1] + dz * toolZInBase[2]) * 1000.0;
+
+            // tauExt_inStiff is in the fc frame (tool, per setFcCoor above):
+            // [Fx, Fy, Fz, Tx, Ty, Tz]. Index 2 is force along the push axis.
+            std::array<double, 6> wrench{};
+            robot.getStateData(RtSupportedFields::tauExt_inStiff, wrench);
+            std::cout << "[t=" << (i + 1) << "s] depth_along_tool_z_mm: " << depth_along_tool_z_mm
+                      << ", force_along_tool_z_N: " << wrench[2] << std::endl;
         }
 
         std::cout << "Control loop requested to stop." << std::endl;

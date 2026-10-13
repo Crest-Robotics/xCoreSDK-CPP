@@ -700,10 +700,13 @@ class DrillCycle
         {
             return AbortReason::kAxisDrift;
         }
-        if (fb.depth_rate_m_per_s > config_.depth_runaway_m_per_s)
-        {
-            return AbortReason::kDepthRunaway;
-        }
+        // Disabled 2026-09-24: blind holes only, so there is no breakthrough
+        // to catch, and it was tripping on the preload's start-up lunge in
+        // settle. The operator mans the E-stop instead.
+        // if (fb.depth_rate_m_per_s > config_.depth_runaway_m_per_s)
+        // {
+        //     return AbortReason::kDepthRunaway;
+        // }
         if (holeDepth(fb.depth_m) > config_.hole_depth_m + config_.depth_overrun_margin_m)
         {
             return AbortReason::kDepthOverrun;

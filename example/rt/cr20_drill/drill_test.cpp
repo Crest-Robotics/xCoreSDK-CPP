@@ -26,8 +26,8 @@
  * SCOPE AND LIMITS
  *
  *  - Blind holes only. A through-hole releases the stored lead at
- *    breakthrough; the depth-runaway abort catches it within a millimetre or
- *    so, but nothing here makes that a designed-for case.
+ *    breakthrough, and the depth-runaway abort that used to catch it is
+ *    disabled. Only the depth-overrun abort and the E-stop remain.
  *  - No spindle control. The operator starts the drill by hand at the
  *    confirmation prompt.
  *  - setCollisionBehaviour is position-control only and does NOT apply in
@@ -149,8 +149,8 @@ constexpr const char* kWorkobjectName = "g_wobj_0";
 /// What g_tool_0 is expected to contain on this arm. Checked rather than
 /// printed-and-hoped: this is the assertion that catches an identity or
 /// wrong toolset before anything is armed.
-constexpr std::array<double, 3> kExpectedToolTransM{0.0202, 0.01476, 0.29149};
-constexpr std::array<double, 3> kExpectedToolRpyRad{-0.017104, 0.558156, 0.259705};
+constexpr std::array<double, 3> kExpectedToolTransM{0.014003, 0.008381, 0.280403};
+constexpr std::array<double, 3> kExpectedToolRpyRad{0.512429, -0.0205949, 1.50884};
 constexpr double kExpectedToolMassKg = 2.714;
 constexpr double kToolTransToleranceM = 0.002;
 constexpr double kToolRpyToleranceRad = 0.02;
@@ -171,6 +171,12 @@ constexpr double kWatchdogGraceSec = 30.0;
 /// Depth-rate smoothing. One pole, ~50 ms, so a breakthrough still shows up
 /// within tens of milliseconds while 1 kHz position quantisation does not.
 constexpr double kDepthRateTimeConstantSec = 0.050;
+
+/// Reaction-torque smoothing for the abort check. One pole, ~100 ms. Raw tz
+/// oscillates +-10 Nm sample to sample (spindle vibration, sign flipping on
+/// most samples) and a single spike tripped the 15 Nm abort on 2026-09-24
+/// while the 200 ms mean never exceeded ~6 Nm. Sustained torque still trips.
+constexpr double kReactionTorqueTimeConstantSec = 0.100;
 
 /// How long to average the force residual for before the plan block. Long
 /// enough that the standard error of the mean is well under a newton against
@@ -887,6 +893,7 @@ int main()
     auto previous_tick = loop_start;
     double previous_depth_m = 0.0;
     double depth_rate_m_per_s = 0.0;
+    double reaction_torque_nm = 0.0;
     bool first_cycle = true;
     Phase previous_phase = Phase::kSettle;
     cr20_drill::Limit previous_limit = cr20_drill::Limit::kNone;
@@ -919,6 +926,8 @@ int main()
         previous_depth_m = delta.z_m;
         const double alpha = std::clamp(dt_s / kDepthRateTimeConstantSec, 0.0, 1.0);
         depth_rate_m_per_s += alpha * (instant_rate - depth_rate_m_per_s);
+        const double torque_alpha = std::clamp(dt_s / kReactionTorqueTimeConstantSec, 0.0, 1.0);
+        reaction_torque_nm += torque_alpha * (wrench[5] - reaction_torque_nm);
 
         Feedback feedback{};
         feedback.depth_m = delta.z_m;
@@ -926,7 +935,7 @@ int main()
         feedback.axis_drift_rad = cr20_drill::bitAxisAngleRad(baseline, measured);
         feedback.axial_force_n = wrench[2];
         feedback.lateral_force_n = std::hypot(wrench[0], wrench[1]);
-        feedback.reaction_torque_nm = wrench[5];
+        feedback.reaction_torque_nm = reaction_torque_nm;
         feedback.depth_rate_m_per_s = depth_rate_m_per_s;
         feedback.dt_s = dt_s;
         feedback.operator_abort = abort_requested.load(std::memory_order_relaxed) ||

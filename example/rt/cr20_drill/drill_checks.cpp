@@ -821,13 +821,13 @@ void checkAborts()
         checkNear(r.final_commanded_m, 0.0, 1e-6, "rigid wall: retract still returns to baseline");
     }
 
-    // Breakthrough must trip the runaway detector, not be ridden down.
+    // Breakthrough must trip a depth abort, not be ridden down. With the
+    // runaway detector disabled that is the depth overrun alone.
     {
         Plant breakthrough{};
         breakthrough.breakthrough_m = 0.040;
         // Past breakthrough the tool is released into open space and really
-        // does run - that is the whole point, and it is what the runaway
-        // detector has to catch.
+        // does run - that is the whole point.
         breakthrough.free_rate_m_per_s = 0.5;
         const RunResult r = run(nominal, breakthrough);
         check(r.abort == AbortReason::kDepthRunaway || r.abort == AbortReason::kDepthOverrun,

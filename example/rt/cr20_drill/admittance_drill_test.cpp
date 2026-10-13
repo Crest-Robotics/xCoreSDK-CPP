@@ -416,6 +416,7 @@ int main()
 
     // -- switch to real-time control ---------------------------------------
 
+    // arm-driver onActivate() goes up to this point. Actions should do the rest. 
     robot.setMotionControlMode(MotionControlMode::RtCommand, ec);
     if (ec)
     {

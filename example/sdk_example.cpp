@@ -480,9 +480,9 @@ int main() {
     //    PCB3Robot robot; // connect to a PCB 3-axis model
     //    xMateCr5Robot; // 5-axis collaborative robot model
     std::cout << "Running basic operation example..." << std::endl;
-    // example_basicOperation(&robot);
+    example_basicOperation(&robot);
     // robot.po
-    example_jog(&robot);
+    // example_jog(&robot);
   } catch (const rokae::Exception &e) {
     std::cerr << e.what();
   }
